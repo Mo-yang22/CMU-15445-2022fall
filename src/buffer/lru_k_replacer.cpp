@@ -36,7 +36,7 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     // 初始化为false,防止在Remove时错误
     is_evictable_[tmp] = false;
     return true;
-  } 
+  }
   for (auto i = cache_.rbegin(); i != cache_.rend(); ++i) {
     if (!is_evictable_[(*i)]) {
       continue;
@@ -64,7 +64,8 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
   if (history_map_.find(frame_id) == history_map_.end()) {
     history_.push_front(frame_id);
     history_map_.insert({frame_id, {1, history_.begin()}});
-    curr_size_++;
+    // curr_size_++;
+    // is_evictable_[frame_id] = true;
   } else if (history_map_[frame_id].first < k_ - 1) {
     history_map_[frame_id].first++;
   } else if (history_map_[frame_id].first == k_ - 1) {
@@ -86,6 +87,10 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
   if (frame_id > static_cast<frame_id_t>(replacer_size_)) {
     std::throw_with_nested("invalid frame_id");
     BUSTUB_ASSERT("cuo", "wu");
+  }
+  // ? 要首先判断是不是已经被驱逐了
+  if (history_map_.find(frame_id) == history_map_.end()) {
+    return;
   }
   if (is_evictable_[frame_id] && !set_evictable) {
     is_evictable_[frame_id] = false;

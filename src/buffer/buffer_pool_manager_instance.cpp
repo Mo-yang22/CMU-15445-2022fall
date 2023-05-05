@@ -99,7 +99,9 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
     replacer_->SetEvictable(frame_id, true);
   }
   // 设置这个frame中含有的page的dirty位
-  pages_[frame_id].is_dirty_ = is_dirty;
+  if (is_dirty) {
+    pages_[frame_id].is_dirty_ = is_dirty;
+  }
   return true;
 }
 
@@ -172,6 +174,7 @@ auto BufferPoolManagerInstance::NewFrame(frame_id_t *frame_id_ptr) -> bool {
     page_table_->Remove(pages_[frame_id].GetPageId());
     if (pages_[frame_id].is_dirty_) {
       disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_[frame_id].GetData());
+      pages_[frame_id].is_dirty_ = false;
     }
   }
   *frame_id_ptr = frame_id;
