@@ -293,7 +293,7 @@ class Trie {
     }
     auto current = &root_;
     size_t i = 0;
-    //找，找不到就新建，只到key的倒数第二个字符
+    // 找，找不到就新建，只到key的倒数第二个字符
     while (i + 1 < key.size()) {
       if ((*current)->GetChildNode(key[i]) == nullptr) {
         std::unique_ptr<TrieNode> tmp = std::make_unique<TrieNode>(key[i]);
@@ -302,14 +302,14 @@ class Trie {
       current = (*current)->GetChildNode(key[i]);
       i++;
     }
-    //第一种情况，末尾结点不存在
+    // 第一种情况，末尾结点不存在
     if ((*current)->GetChildNode(key[i]) == nullptr) {
       std::unique_ptr<TrieNodeWithValue<T>> tmp = std::make_unique<TrieNodeWithValue<T>>(key[i], value);
       (*current)->InsertChildNode(key[i], std::move(tmp));
       latch_.WUnlock();
       return true;
     }
-    //第二种情况，将普通结点转化为带value的结点
+    // 第二种情况，将普通结点转化为带value的结点
     current = (*current)->GetChildNode(key[i]);
     if (!(*current)->IsEndNode()) {
       auto *tmp = new TrieNodeWithValue<T>(std::move(*(*current)), value);
@@ -317,7 +317,7 @@ class Trie {
       latch_.WUnlock();
       return true;
     }
-    //第三种情况
+    // 第三种情况
     latch_.WUnlock();
     return false;
   }

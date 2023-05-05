@@ -143,7 +143,7 @@ class ExtendibleHashTable : public HashTable<K, V> {
      * @return True if the key exists, false otherwise.
      */
     auto Remove(const K &key) -> bool;
-    
+
     /**
      *
      * TODO(P1): Add implementation
@@ -159,9 +159,9 @@ class ExtendibleHashTable : public HashTable<K, V> {
 
    private:
     // TODO(student): You may add additional private members and helper functions
-    size_t size_; //一个bucket能包含的最多的元素数量
-    int depth_; // Local Depth
-    std::list<std::pair<K, V>> list_; //以list形式保存K/V
+    size_t size_;                      // 一个bucket能包含的最多的元素数量
+    int depth_;                        // Local Depth
+    std::list<std::pair<K, V>> list_;  // 以list形式保存K/V
   };
 
  private:
@@ -181,7 +181,7 @@ class ExtendibleHashTable : public HashTable<K, V> {
    * @param bucket The bucket to be redistributed.
    */
   auto RedistributeBucket(std::shared_ptr<Bucket> bucket) -> void;
-  auto NewBucket(int local_depth) ->std::shared_ptr<Bucket>;
+  auto NewBucket(int local_depth) -> std::shared_ptr<Bucket>;
   void InsertHelper(const K &key, const V &value);
   /*****************************************************************
    * Must acquire latch_ first before calling the below functions. *

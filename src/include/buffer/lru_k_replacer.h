@@ -139,14 +139,14 @@ class LRUKReplacer {
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
   [[maybe_unused]] size_t current_timestamp_{0};
-  size_t curr_size_{0}; //表示现在的可被evict的数量
-  size_t replacer_size_; //表示最大的size
-  size_t k_; //这个代表了LRU-K中的K
+  size_t curr_size_{0};   // 表示现在的可被evict的数量
+  size_t replacer_size_;  // 表示最大的size
+  size_t k_;              // 这个代表了LRU-K中的K
   std::mutex latch_;
   std::list<frame_id_t> history_{};
   std::list<frame_id_t> cache_{};
-  std::unordered_map<frame_id_t,std::pair<size_t, std::list<frame_id_t>::iterator>> history_map_{};
-  std::unordered_map<frame_id_t,std::list<frame_id_t>::iterator> cache_map_{};
+  std::unordered_map<frame_id_t, std::pair<size_t, std::list<frame_id_t>::iterator>> history_map_{};
+  std::unordered_map<frame_id_t, std::list<frame_id_t>::iterator> cache_map_{};
   std::vector<bool> is_evictable_;
 };
 
