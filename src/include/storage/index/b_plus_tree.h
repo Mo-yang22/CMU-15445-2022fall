@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "common/config.h"
 #include "concurrency/transaction.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
@@ -82,6 +83,10 @@ class BPlusTree {
 
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
+  auto FindLeaf(const KeyType& key) -> page_id_t;
+
+  // 往未满的叶子节点中插入k/v对
+  void InsertInLeaf(LeafPage *leaf,const KeyType& key, const ValueType& value);
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;

@@ -49,7 +49,11 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  auto ValueAt(int index) const ->ValueType;
+  auto LookUp(const KeyType& key, ValueType *value,KeyComparator comp)->bool;
 
+  // 假如满了直接返回false,不满插入,对于不重复key的检查在上层实现
+  auto InsertInLeaf(const KeyType& key, ValueType &value,KeyComparator comp) ->bool;
  private:
   page_id_t next_page_id_;
   // Flexible array member for page data.

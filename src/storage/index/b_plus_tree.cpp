@@ -1,9 +1,11 @@
 #include <string>
 
+#include "common/config.h"
 #include "common/exception.h"
 #include "common/logger.h"
 #include "common/rid.h"
 #include "storage/index/b_plus_tree.h"
+#include "storage/page/b_plus_tree_page.h"
 #include "storage/page/header_page.h"
 
 namespace bustub {
@@ -32,7 +34,16 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
+  page_id_t leaf_page_id = FindLeaf(key);
+  auto page = reinterpret_cast<BPlusTreePage*>(buffer_pool_manager_->FetchPage(leaf_page_id)->GetData());
+  auto leaf_page = reinterpret_cast<LeafPage*>(page);
+  ValueType value;
+  if(leaf_page->LookUp(key,&value,comparator_)){
+    result->emplace_back(value);
+    return true;
+  }
   return false;
+
 }
 
 /*****************************************************************************
@@ -48,6 +59,10 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) -> bool {
   return false;
+}
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::InsertInLeaf(LeafPage *leaf,const KeyType& key, const ValueType& value){
+  
 }
 
 /*****************************************************************************
@@ -95,6 +110,18 @@ auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { return INDEXITERATOR_TYPE(); 
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { return 0; }
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::FindLeaf(const KeyType& key) ->page_id_t{
+  auto *cur_page = reinterpret_cast<BPlusTreePage *>(buffer_pool_manager_->FetchPage(root_page_id_)->GetData());
+  while(!cur_page->IsLeafPage()){
+    auto *cur_inner_page = reinterpret_cast<InternalPage*>(cur_page);
+    page_id_t next_page_id = cur_inner_page->Find(key,comparator_);
+    cur_page = reinterpret_cast<BPlusTreePage *>(buffer_pool_manager_->FetchPage(next_page_id)->GetData());
+  }
+  return cur_page->GetPageId();
+}
 
 /*****************************************************************************
  * UTILITIES AND DEBUG
