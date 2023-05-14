@@ -43,6 +43,10 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
 
   auto Find(const KeyType &key,KeyComparator comp)-> ValueType;
+  void InsertNodeAfter(const ValueType& left_value,const KeyType& key, const ValueType& value); 
+
+  // 将BPlusTreePage中的部分函数进行覆盖
+  auto GetMaxSize() const ->int;
  private:
   // Flexible array member for page data.
   MappingType array_[1];

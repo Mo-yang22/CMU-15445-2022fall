@@ -9,10 +9,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cassert>
 #include <cstddef>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <utility>
 
 #include "common/exception.h"
 #include "common/logger.h"
@@ -32,6 +34,8 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id
   SetPageId(page_id);
   SetParentPageId(parent_id);
   SetMaxSize(max_size);
+  // 将初始化的size设置为0
+  SetSize(0);
 }
 /*
  * Helper method to get/set the key associated with input "index"(a.k.a
@@ -71,6 +75,24 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Find(const KeyType &key,KeyComparator comp)
     l--;
   }
   return array_[l].second;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertNodeAfter(const ValueType& left_value,const KeyType& key, const ValueType& value){
+  if (GetSize() == 0){
+    IncreaseSize(2);
+    array_[0].second = left_value;
+    *(array_ + 1) = std::make_pair(key, value);
+  } else {
+    int i = GetSize() - 1;
+    while (i >= 0 && array_[i].second != left_value){
+      array_[i+1] = array_[i];
+      i--;
+    }
+    assert(i>=0);
+    array_[i+1] = std::make_pair(key,value);
+    IncreaseSize(1);
+  } 
 }
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;

@@ -19,6 +19,7 @@
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
 #include "storage/page/b_plus_tree_leaf_page.h"
+#include "storage/page/b_plus_tree_page.h"
 
 namespace bustub {
 
@@ -85,8 +86,22 @@ class BPlusTree {
 
   auto FindLeaf(const KeyType& key) -> page_id_t;
 
-  // 往未满的叶子节点中插入k/v对
-  void InsertInLeaf(LeafPage *leaf,const KeyType& key, const ValueType& value);
+ /**
+ * Insert相关的辅助函数
+ */
+  // 往page和new_page的父节点中插入节点
+  void InsertInParent(BPlusTreePage *left_page,BPlusTreePage* right_page,const KeyType& key);
+
+  // 叶子节点和非叶子节点共有split函数
+  // 这个函数的作用是将一个节点一分为二,左边占多的
+  // 非叶子节点第一个元素的key无效刚好适合这种分发
+  // 返回值是新建的page的page_id
+  // node都是插好的节点,这个函数只管分裂
+  auto Split(BPlusTreePage *node)->page_id_t;
+
+  void StartNewTree();
+
+  
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;

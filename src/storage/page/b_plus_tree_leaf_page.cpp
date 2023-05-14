@@ -31,6 +31,8 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id, in
   SetPageId(page_id);
   SetParentPageId(parent_id);
   SetMaxSize(max_size);
+  // 将初始化的size设置为0
+  SetSize(0);
 }
 
 /**
@@ -80,7 +82,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::LookUp(const KeyType &key,ValueType *value, Key
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertInLeaf(const KeyType &key, ValueType &value, KeyComparator comp)->bool{
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertInLeaf(const KeyType &key, const ValueType &value, KeyComparator comp)->bool{
   // 之前就已经满了,直接返回false
   if (GetSize() == GetMaxSize() - 1){
     return false;
