@@ -49,11 +49,26 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
-  auto ValueAt(int index) const ->ValueType;
-  auto LookUp(const KeyType& key, ValueType *value,KeyComparator comp)->bool;
+  auto ValueAt(int index) const -> ValueType;
+  auto GetItem(int index) -> const MappingType &;
+  auto KeyIndex(const KeyType &key, const KeyComparator &comp) const -> int;
+  auto LookUp(const KeyType &key, ValueType *value, KeyComparator comp) -> bool;
 
   // 假如满了直接返回false,不满插入,对于不重复key的检查在上层实现
-  auto InsertInLeaf(const KeyType& key, const ValueType &value,KeyComparator comp) ->bool;
+  void Insert(const KeyType &key, const ValueType &value, KeyComparator comp);
+
+  // split函数的两个辅助函数
+  void CopyNFrom(MappingType *items, int size);
+  void MoveHalfTo(BPlusTreeLeafPage *recipient);
+
+  void Delete(const KeyType &key, KeyComparator &comp);
+
+  void MoveAllTo(BPlusTreeLeafPage *recipient);
+
+  void MoveFirstToLast(BPlusTreeLeafPage *recipient);
+  void MoveLastToFirst(BPlusTreeLeafPage *recipient);
+  void CopyFirstFrom(const MappingType &item);
+
  private:
   page_id_t next_page_id_;
   // Flexible array member for page data.

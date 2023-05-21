@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <mutex>  //NOLINT
 #include <queue>
 #include <string>
 #include <vector>
@@ -84,24 +85,36 @@ class BPlusTree {
 
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
-  auto FindLeaf(const KeyType& key) -> page_id_t;
+  auto FindLeaf(const KeyType &key) -> page_id_t;
 
- /**
- * Insert相关的辅助函数
- */
+  /**
+   * Insert相关的辅助函数
+   */
   // 往page和new_page的父节点中插入节点
-  void InsertInParent(BPlusTreePage *left_page,BPlusTreePage* right_page,const KeyType& key);
+
+  void InsertInParent(BPlusTreePage *left_node, BPlusTreePage *right_node, const KeyType &key);
 
   // 叶子节点和非叶子节点共有split函数
   // 这个函数的作用是将一个节点一分为二,左边占多的
   // 非叶子节点第一个元素的key无效刚好适合这种分发
   // 返回值是新建的page的page_id
   // node都是插好的节点,这个函数只管分裂
-  auto Split(BPlusTreePage *node)->page_id_t;
+  auto Split(BPlusTreePage *node) -> page_id_t;
 
-  void StartNewTree();
+  void StartNewTree(const KeyType &key, const ValueType &value);
 
-  
+  /**
+   * Remove相关的辅助函数
+   */
+  void RemoveEntry(BPlusTreePage *node, const KeyType &key, Transaction *transaction);
+
+  auto FindSibling(BPlusTreePage *node, KeyType *key, bool *is_right) -> page_id_t;
+
+  void Coalesce(BPlusTreePage **node, BPlusTreePage **sibling_node, bool is_right, const KeyType &mid_key,
+                Transaction *transaction);
+
+  void Redistribute(BPlusTreePage *node, BPlusTreePage *sibling_node, bool is_right, const KeyType &mid_key,
+                    Transaction *transaction);
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;
@@ -109,6 +122,7 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
+  std::mutex big_latch_;
 };
 
 }  // namespace bustub
