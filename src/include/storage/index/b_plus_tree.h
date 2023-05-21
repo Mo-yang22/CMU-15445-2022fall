@@ -10,21 +10,22 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include <mutex>  //NOLINT
 #include <queue>
 #include <string>
 #include <vector>
 
-#include "common/config.h"
 #include "concurrency/transaction.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
 #include "storage/page/b_plus_tree_leaf_page.h"
-#include "storage/page/b_plus_tree_page.h"
+
+#include "common/rwlatch.h"
 
 namespace bustub {
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator>
+
+enum class Operation { SEARCH, INSERT, DELETE };
 
 /**
  * Main class providing the API for the Interactive B+ Tree.
@@ -77,6 +78,10 @@ class BPlusTree {
   // read data from file and remove one by one
   void RemoveFromFile(const std::string &file_name, Transaction *transaction = nullptr);
 
+  auto FindLeaf(const KeyType &key, Operation operation, Transaction *transaction = nullptr, bool leftMost = false,
+                bool rightMost = false) -> Page *;
+  void ReleaseLatchFromQueue(Transaction *transaction);
+
  private:
   void UpdateRootPageId(int insert_record = 0);
 
@@ -85,36 +90,28 @@ class BPlusTree {
 
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
-  auto FindLeaf(const KeyType &key) -> page_id_t;
-
-  /**
-   * Insert相关的辅助函数
-   */
-  // 往page和new_page的父节点中插入节点
-
-  void InsertInParent(BPlusTreePage *left_node, BPlusTreePage *right_node, const KeyType &key);
-
-  // 叶子节点和非叶子节点共有split函数
-  // 这个函数的作用是将一个节点一分为二,左边占多的
-  // 非叶子节点第一个元素的key无效刚好适合这种分发
-  // 返回值是新建的page的page_id
-  // node都是插好的节点,这个函数只管分裂
-  auto Split(BPlusTreePage *node) -> page_id_t;
-
   void StartNewTree(const KeyType &key, const ValueType &value);
 
-  /**
-   * Remove相关的辅助函数
-   */
-  void RemoveEntry(BPlusTreePage *node, const KeyType &key, Transaction *transaction);
+  auto InsertIntoLeaf(const KeyType &key, const ValueType &value, Transaction *transaction = nullptr) -> bool;
 
-  auto FindSibling(BPlusTreePage *node, KeyType *key, bool *is_right) -> page_id_t;
+  void InsertIntoParent(BPlusTreePage *old_node, const KeyType &key, BPlusTreePage *new_node,
+                        Transaction *transaction = nullptr);
 
-  void Coalesce(BPlusTreePage **node, BPlusTreePage **sibling_node, bool is_right, const KeyType &mid_key,
-                Transaction *transaction);
+  template <typename N>
+  auto Split(N *node) -> N *;
 
-  void Redistribute(BPlusTreePage *node, BPlusTreePage *sibling_node, bool is_right, const KeyType &mid_key,
-                    Transaction *transaction);
+  template <typename N>
+  auto CoalesceOrRedistribute(N *node, Transaction *transaction = nullptr) -> bool;
+
+  template <typename N>
+  auto Coalesce(N *neighbor_node, N *node, BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator> *parent, int index,
+                Transaction *transaction = nullptr) -> bool;
+
+  template <typename N>
+  void Redistribute(N *neighbor_node, N *node, BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator> *parent,
+                    int index, bool from_prev);
+
+  auto AdjustRoot(BPlusTreePage *node) -> bool;
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;
@@ -122,7 +119,7 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
-  std::mutex big_latch_;
+  ReaderWriterLatch root_page_id_latch_;
 };
 
 }  // namespace bustub

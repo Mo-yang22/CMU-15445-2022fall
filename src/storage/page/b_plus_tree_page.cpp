@@ -10,7 +10,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "storage/page/b_plus_tree_page.h"
-#include "common/config.h"
 
 namespace bustub {
 
@@ -22,6 +21,7 @@ auto BPlusTreePage::IsLeafPage() const -> bool { return page_type_ == IndexPageT
 auto BPlusTreePage::IsRootPage() const -> bool { return parent_page_id_ == INVALID_PAGE_ID; }
 void BPlusTreePage::SetPageType(IndexPageType page_type) { page_type_ = page_type; }
 auto BPlusTreePage::GetPageType() -> IndexPageType { return page_type_; }
+
 /*
  * Helper methods to get/set size (number of key/value pairs stored in that
  * page)
@@ -41,10 +41,10 @@ void BPlusTreePage::SetMaxSize(int size) { max_size_ = size; }
  * Generally, min page size == max page size / 2
  */
 auto BPlusTreePage::GetMinSize() const -> int {
-    if (IsLeafPage()) {
-        return max_size_ / 2;
-    }
-    return (max_size_ + 1) / 2; 
+  if (IsLeafPage()) {
+    return max_size_ / 2;
+  }
+  return (max_size_ + 1) / 2;
 }
 
 /*

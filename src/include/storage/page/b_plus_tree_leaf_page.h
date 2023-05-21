@@ -49,30 +49,23 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
-  auto ValueAt(int index) const -> ValueType;
   auto GetItem(int index) -> const MappingType &;
-  auto KeyIndex(const KeyType &key, const KeyComparator &comp) const -> int;
-  auto Lookup(const KeyType &key, ValueType *value, KeyComparator comp) -> bool;
+  auto KeyIndex(const KeyType &key, const KeyComparator &comparator) const -> int;
+  auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &keyComparator) -> int;
+  auto Lookup(const KeyType &key, ValueType *value, const KeyComparator &keyComparator) const -> bool;
+  auto RemoveAndDeleteRecord(const KeyType &key, const KeyComparator &keyComparator) -> int;
 
-  // 假如满了直接返回false,不满插入,对于不重复key的检查在上层实现
-  auto Insert(const KeyType &key, const ValueType &value, KeyComparator comp) ->int;
-
-  // split函数的两个辅助函数
-  void CopyNFrom(MappingType *items, int size);
   void MoveHalfTo(BPlusTreeLeafPage *recipient);
-
-  auto RemoveAndDeleteRecord(const KeyType &key, KeyComparator &comp)->int;
-
   void MoveAllTo(BPlusTreeLeafPage *recipient);
-
   void MoveFirstToEndOf(BPlusTreeLeafPage *recipient);
   void MoveLastToFrontOf(BPlusTreeLeafPage *recipient);
-  void CopyFirstFrom(const MappingType &item);
-  void CopyLastFrom(const MappingType &item);
 
  private:
   page_id_t next_page_id_;
   // Flexible array member for page data.
   MappingType array_[1];
+  void CopyNFrom(MappingType *items, int size);
+  void CopyLastFrom(const MappingType &item);
+  void CopyFirstFrom(const MappingType &item);
 };
 }  // namespace bustub
