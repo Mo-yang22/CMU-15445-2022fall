@@ -45,19 +45,21 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
   auto ValueIndex(const ValueType &value) -> int;
   auto KeyIndex(const KeyType &key, const KeyComparator &comp) const -> int;
-  auto Find(const KeyType &key, KeyComparator &comp) -> ValueType;
-  void InsertNodeAfter(const ValueType &left_value, const KeyType &key, const ValueType &value);
+  auto Lookup(const KeyType &key, KeyComparator &comp) const -> ValueType;
+  auto InsertNodeAfter(const ValueType &left_value, const KeyType &key, const ValueType &value) ->int;
   void PopulateNewRoot(const ValueType &left_value, const KeyType &key, const ValueType &value);
   // split的辅助函数
   void CopyNFrom(MappingType *item, int size, BufferPoolManager *buffer_pool_manager);
   void MoveHalfTo(BPlusTreeInternalPage *recipient, BufferPoolManager *buffer_pool_manager);
   // Remove的辅助函数
   void Delete(const KeyType &key, KeyComparator &comp);
-  void MoveAllTo(BPlusTreeInternalPage *recipient, BufferPoolManager *buffer_pool_manager, const KeyType &mid_key);
 
-  void MoveFirstToLast(BPlusTreeInternalPage *recipient, BufferPoolManager *buffer_pool_manager,
-                       const KeyType &mid_key);
-  void MoveLastToFirst(BPlusTreeInternalPage *recipient, BufferPoolManager *buffer_pool_manager);
+  void Remove(int index); 
+  auto RemoveAndReturnOnlyChild() -> ValueType;
+  void MoveAllTo(BPlusTreeInternalPage *recipient, const KeyType &mid_key, BufferPoolManager *buffer_pool_manager);
+
+  void MoveFirstToEndOf(BPlusTreeInternalPage *recipient, const KeyType &mid_key, BufferPoolManager *buffer_pool_manager);
+  void MoveLastToFrontOf(BPlusTreeInternalPage *recipient, const KeyType &middle_key, BufferPoolManager *buffer_pool_manager);
   void CopyFirstFrom(const MappingType &item, BufferPoolManager *buffer_pool_manager);
 
  private:
