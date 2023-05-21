@@ -23,7 +23,7 @@ INDEXITERATOR_TYPE::~IndexIterator() {
 
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::IsEnd() -> bool {
-  return static_cast<bool>(index_ == (cur_node_->GetSize() - 1) && cur_node_->GetNextPageId() == INVALID_PAGE_ID);
+  return static_cast<bool>(index_ == (cur_node_->GetSize()) && cur_node_->GetNextPageId() == INVALID_PAGE_ID);
 }
 
 INDEX_TEMPLATE_ARGUMENTS
