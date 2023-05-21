@@ -89,7 +89,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparato
 }
 // 正常情况是要返回false的，返回true代表这个叶子节点中有这个key，而要求的是不重复
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::LookUp(const KeyType &key, ValueType *value, KeyComparator comp) -> bool {
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, KeyComparator comp) -> bool {
   int l = KeyIndex(key, comp);
   // return !static_cast<bool>(l == GetSize() || comp(array_[l].first,key) > 0);
   if (l == GetSize() || comp(array_[l].first, key) > 0) {
@@ -100,29 +100,32 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::LookUp(const KeyType &key, ValueType *value, Ke
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, KeyComparator comp) {
-  // int l = KeyIndex(key, comp);
-  // // 从后往前将l后面的元素都往后移动一个
-
-  // if (comp(KeyAt(l), key) == 0) {
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, KeyComparator comp) ->int {
+  // auto index = KeyIndex(key, comp);
+  // if (index == GetSize()) {
+  //   *(array_ + index) = {key, value};
+  //   IncreaseSize(1);
   //   return;
   // }
+  // std::move_backward(array_ + index, array_ + GetSize(), array_ + GetSize() + 1);
+  // *(array_ + index) = {key, value};
   // IncreaseSize(1);
-  // for (int i = GetSize() - 1; i > l; i--) {
-  //   assert(i >=0 && i < GetSize());
-  //   array_[i] = array_[i - 1];
-  // }
-  // // 在l处插入k/v
-  // array_[l] = MappingType{key, value};
-  auto index = KeyIndex(key, comp);
-  if (index == GetSize()) {
-    *(array_ + index) = {key, value};
+  auto distance_in_array = KeyIndex(key, comp);
+  if (distance_in_array == GetSize()) {
+    *(array_ + distance_in_array) = {key, value};
     IncreaseSize(1);
-    return;
+    return GetSize();
   }
-  std::move_backward(array_ + index, array_ + GetSize(), array_ + GetSize() + 1);
-  *(array_ + index) = {key, value};
+
+  if (comp(array_[distance_in_array].first, key) == 0) {
+    return GetSize();
+  }
+
+  std::move_backward(array_ + distance_in_array, array_ + GetSize(), array_ + GetSize() + 1);
+  *(array_ + distance_in_array) = {key, value};
+
   IncreaseSize(1);
+  return GetSize();
 }
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyNFrom(MappingType *items, int size) {
@@ -139,14 +142,14 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient) {
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, KeyComparator &comp) {
-  int l = KeyIndex(key, comp);
-  // 不存在,就立马返回
-  if (l == GetSize() || comp(array_[l].first, key) > 0) {
-    return;
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, KeyComparator &comp) -> int {
+  int target_in_array = KeyIndex(key, comp);
+  if (target_in_array == GetSize() || comp(array_[target_in_array].first, key) != 0) {
+    return GetSize();
   }
-  std::move(array_ + l + 1, array_ + GetSize(), array_ + l);
+  std::move(array_ + target_in_array + 1, array_ + GetSize(), array_ + target_in_array);
   IncreaseSize(-1);
+  return GetSize();
 }
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
@@ -154,7 +157,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
   SetSize(0);
 }
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToLast(BPlusTreeLeafPage *recipient) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeLeafPage *recipient) {
   recipient->CopyNFrom(array_, 1);
 
   for (int i = 0; i < GetSize() - 1; i++) {
@@ -164,7 +167,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToLast(BPlusTreeLeafPage *recipient) {
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFirst(BPlusTreeLeafPage *recipient) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFrontOf(BPlusTreeLeafPage *recipient) {
   recipient->CopyFirstFrom(array_[GetSize() - 1]);
   IncreaseSize(-1);
 }
@@ -172,6 +175,11 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyFirstFrom(const MappingType &item) {
   std::move_backward(array_, array_ + GetSize(), array_ + GetSize() + 1);
   array_[0] = item;
+  IncreaseSize(1);
+}
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyLastFrom(const MappingType &item) {
+  *(array_ + GetSize()) = item;
   IncreaseSize(1);
 }
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
