@@ -14,8 +14,8 @@ namespace bustub {
  * set your own input parameters
  */
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE::IndexIterator(LeafPage *leaf_node, int index, BufferPoolManager *buffer_pool_manager)
-    : cur_node_(leaf_node), index_(index), buffer_pool_manager_(buffer_pool_manager) {}
+INDEXITERATOR_TYPE::IndexIterator(BufferPoolManager *bpm, Page *page, int index)
+    : page_(page), index_(index), buffer_pool_manager_(bpm) {}
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::~IndexIterator() {
   buffer_pool_manager_->UnpinPage(cur_node_->GetPageId(), true);
@@ -23,7 +23,7 @@ INDEXITERATOR_TYPE::~IndexIterator() {
 
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::IsEnd() -> bool {
-  return static_cast<bool>(index_ == (cur_node_->GetSize() - 1) && cur_node_->GetNextPageId() == INVALID_PAGE_ID);
+  return static_cast<bool>(index_ == cur_node_->GetSize() && cur_node_->GetNextPageId() == INVALID_PAGE_ID);
 }
 
 INDEX_TEMPLATE_ARGUMENTS
