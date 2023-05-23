@@ -104,7 +104,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertNodeAfter(const ValueType &left_value
   // for (int i = index + 1; i < GetSize() - 1; i++) {
   //   array_[i + 1] = array_[i];
   // }
-  std::move_backward(array_ + index + 1,array_ + GetSize(), array_ + GetSize() + 1);
+  std::move_backward(array_ + index + 1, array_ + GetSize(), array_ + GetSize() + 1);
   // assert(i >= 0);
   array_[index + 1] = std::make_pair(key, value);
   IncreaseSize(1);

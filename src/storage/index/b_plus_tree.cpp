@@ -112,12 +112,10 @@ void BPLUSTREE_TYPE::InsertInParent(BPlusTreePage *left_node, BPlusTreePage *rig
 
     auto page = buffer_pool_manager_->NewPage(&root_page_id_);
     UpdateRootPageId();
-    assert(left_node->GetPageId()!=root_page_id_);
+    assert(left_node->GetPageId() != root_page_id_);
     auto inner_node = reinterpret_cast<InternalPage *>(page->GetData());
     inner_node->Init(root_page_id_, INVALID_PAGE_ID, internal_max_size_);
     inner_node->PopulateNewRoot(left_node->GetPageId(), key, right_node->GetPageId());
-
-    
 
     left_node->SetParentPageId(root_page_id_);
     right_node->SetParentPageId(root_page_id_);
@@ -130,7 +128,7 @@ void BPLUSTREE_TYPE::InsertInParent(BPlusTreePage *left_node, BPlusTreePage *rig
 
   auto p_page = buffer_pool_manager_->FetchPage(p_page_id);
   auto p_node = reinterpret_cast<InternalPage *>(p_page->GetData());
-  //P has less than n points
+  // P has less than n points
   if (p_node->GetSize() < internal_max_size_) {
     p_node->InsertNodeAfter(left_node->GetPageId(), key, right_node->GetPageId());
     buffer_pool_manager_->UnpinPage(p_page_id, true);
