@@ -111,11 +111,13 @@ void BPLUSTREE_TYPE::InsertInParent(BPlusTreePage *left_node, BPlusTreePage *rig
     // create a new node
 
     auto page = buffer_pool_manager_->NewPage(&root_page_id_);
+    UpdateRootPageId();
+    assert(left_node->GetPageId()!=root_page_id_);
     auto inner_node = reinterpret_cast<InternalPage *>(page->GetData());
     inner_node->Init(root_page_id_, INVALID_PAGE_ID, internal_max_size_);
     inner_node->PopulateNewRoot(left_node->GetPageId(), key, right_node->GetPageId());
 
-    UpdateRootPageId();
+    
 
     left_node->SetParentPageId(root_page_id_);
     right_node->SetParentPageId(root_page_id_);
@@ -136,6 +138,7 @@ void BPLUSTREE_TYPE::InsertInParent(BPlusTreePage *left_node, BPlusTreePage *rig
   }
 
   // Copy P to a block of memory T that can hold P and (K',N')
+  assert(internal_max_size_ == p_node->GetSize());
   auto mem = new char[INTERNAL_PAGE_HEADER_SIZE + sizeof(MappingType) * (p_node->GetSize() + 1)];
   auto copy_node = reinterpret_cast<InternalPage *>(mem);
   std::memcpy(mem, p_page->GetData(), INTERNAL_PAGE_HEADER_SIZE + sizeof(MappingType) * (p_node->GetSize()));
@@ -146,6 +149,7 @@ void BPLUSTREE_TYPE::InsertInParent(BPlusTreePage *left_node, BPlusTreePage *rig
   page_id_t new_page_id = Split(copy_node);
   auto new_sibling_node = reinterpret_cast<InternalPage *>(buffer_pool_manager_->FetchPage(new_page_id)->GetData());
   KeyType new_key = new_sibling_node->KeyAt(0);
+  assert(copy_node->GetSize() == copy_node->GetMinSize());
   std::memcpy(p_page->GetData(), mem, INTERNAL_PAGE_HEADER_SIZE + sizeof(MappingType) * (copy_node->GetMinSize()));
   InsertInParent(p_node, new_sibling_node, new_key);
   buffer_pool_manager_->UnpinPage(p_node->GetPageId(), true);
@@ -179,8 +183,8 @@ auto BPLUSTREE_TYPE::Split(BPlusTreePage *node) -> page_id_t {
     // ?忘记写兄弟节点的变化了
     new_node->SetNextPageId(leaf_node->GetNextPageId());
     leaf_node->SetNextPageId(new_node->GetPageId());
-
     buffer_pool_manager_->UnpinPage(new_page_id, true);
+    // LOG_DEBUG("left: %d, right: %d",node->GetPageId(),new_page_id);
     return new_page_id;
   }
   auto inner_node = reinterpret_cast<InternalPage *>(node);
