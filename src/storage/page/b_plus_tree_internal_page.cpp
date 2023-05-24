@@ -187,9 +187,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveLastToFirst(BPlusTreeInternalPage *reci
 }
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyFirstFrom(const MappingType &item, BufferPoolManager *buffer_pool_manager) {
-  for (int i = 0; i < GetSize(); ++i) {
-    array_[i + 1] = array_[i];
-  }
+  std::move_backward(array_, array_ + GetSize(), array_ + GetSize() + 1);
   array_[0] = item;
 
   auto child_page = buffer_pool_manager->FetchPage(ValueAt(0));

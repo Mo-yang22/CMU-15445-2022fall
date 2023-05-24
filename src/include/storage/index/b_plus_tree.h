@@ -25,7 +25,7 @@
 namespace bustub {
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator>
-
+enum class Operation { SEARCH, INSERT, DELETE };
 /**
  * Main class providing the API for the Interactive B+ Tree.
  *
@@ -85,7 +85,8 @@ class BPlusTree {
 
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
-  auto FindLeaf(const KeyType &key) -> page_id_t;
+  auto FindLeaf(const KeyType &key, Operation operation = Operation::SEARCH, Transaction *transaction = nullptr,
+                bool leftMost = false, bool rightMost = false) -> BPlusTreePage *;
 
   /**
    * Insert相关的辅助函数
@@ -99,7 +100,8 @@ class BPlusTree {
   // 非叶子节点第一个元素的key无效刚好适合这种分发
   // 返回值是新建的page的page_id
   // node都是插好的节点,这个函数只管分裂
-  auto Split(BPlusTreePage *node) -> page_id_t;
+  template <typename N>
+  auto Split(N *node) -> N *;
 
   void StartNewTree(const KeyType &key, const ValueType &value);
 
@@ -108,7 +110,8 @@ class BPlusTree {
    */
   void RemoveEntry(BPlusTreePage *node, const KeyType &key, Transaction *transaction);
 
-  auto FindSibling(BPlusTreePage *node, KeyType *key, bool *is_right) -> page_id_t;
+  template <typename N>
+  auto FindSibling(N *node, KeyType *key, bool *is_right) -> N *;
 
   void Coalesce(BPlusTreePage **node, BPlusTreePage **sibling_node, bool is_right, const KeyType &mid_key,
                 Transaction *transaction);
