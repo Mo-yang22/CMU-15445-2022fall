@@ -125,6 +125,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyNFrom(MappingType *items, int size, Buf
   for (int i = GetSize(); i < GetSize() + size; ++i) {
     auto child_page = buffer_pool_manager->FetchPage(ValueAt(i));
     auto child_node = reinterpret_cast<BPlusTreePage *>(child_page);
+    // LOG_DEBUG("PageId() : %d",GetPageId());
     child_node->SetParentPageId(GetPageId());
     buffer_pool_manager->UnpinPage(ValueAt(i), true);
   }

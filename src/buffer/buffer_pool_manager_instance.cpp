@@ -102,6 +102,10 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   if (is_dirty) {
     pages_[frame_id].is_dirty_ = is_dirty;
   }
+  // for (size_t i = 0; i <pool_size_; ++i) {
+  //   std::cout<<pages_[i].pin_count_<<' ';
+  // }
+  // std::cout<<std::endl;
   return true;
 }
 

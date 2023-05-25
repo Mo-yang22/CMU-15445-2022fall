@@ -93,7 +93,8 @@ class BPlusTree {
    */
   // 往page和new_page的父节点中插入节点
 
-  void InsertInParent(BPlusTreePage *left_node, BPlusTreePage *right_node, const KeyType &key);
+  void InsertInParent(BPlusTreePage *left_node, BPlusTreePage *right_node, const KeyType &key,
+                      Transaction *transaction = nullptr);
 
   // 叶子节点和非叶子节点共有split函数
   // 这个函数的作用是将一个节点一分为二,左边占多的
@@ -101,23 +102,30 @@ class BPlusTree {
   // 返回值是新建的page的page_id
   // node都是插好的节点,这个函数只管分裂
   template <typename N>
-  auto Split(N *node) -> N *;
+  auto Split(N *node, Transaction *transaction = nullptr) -> N *;
 
   void StartNewTree(const KeyType &key, const ValueType &value);
 
   /**
    * Remove相关的辅助函数
    */
-  void RemoveEntry(BPlusTreePage *node, const KeyType &key, Transaction *transaction);
+  void RemoveEntry(BPlusTreePage *node, const KeyType &key, Transaction *transaction = nullptr);
 
   template <typename N>
-  auto FindSibling(N *node, KeyType *key, bool *is_right) -> N *;
+  auto FindSibling(N *node, KeyType *key, bool *is_right, Transaction *transaction = nullptr) -> N *;
 
   void Coalesce(BPlusTreePage **node, BPlusTreePage **sibling_node, bool is_right, const KeyType &mid_key,
-                Transaction *transaction);
+                Transaction *transaction = nullptr);
 
   void Redistribute(BPlusTreePage *node, BPlusTreePage *sibling_node, bool is_right, const KeyType &mid_key,
-                    Transaction *transaction);
+                    Transaction *transaction = nullptr);
+  /**
+   * Concurrent相关的辅助函数
+   */
+  auto IsPageSafe(BPlusTreePage *node, Operation operation) -> bool;
+  void ReleaseLatchFromQueue(Operation operation, Transaction *transaction = nullptr);
+
+  void DeleteAllPage(Transaction *transaction = nullptr);
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;
@@ -125,7 +133,7 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
-  std::mutex big_latch_;
+  ReaderWriterLatch root_latch_;
 };
 
 }  // namespace bustub
