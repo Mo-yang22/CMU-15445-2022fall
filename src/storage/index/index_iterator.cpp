@@ -17,7 +17,12 @@ INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::IndexIterator(LeafPage *leaf_node, int index, BufferPoolManager *buffer_pool_manager)
     : cur_node_(leaf_node), index_(index), buffer_pool_manager_(buffer_pool_manager) {}
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE::~IndexIterator() { buffer_pool_manager_->UnpinPage(cur_node_->GetPageId(), true); }  // NOLINT
+INDEXITERATOR_TYPE::~IndexIterator() {
+  Page *page = buffer_pool_manager_->FetchPage(cur_node_->GetPageId());
+  page->RUnlatch();
+  buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
+  buffer_pool_manager_->UnpinPage(cur_node_->GetPageId(), false);
+}  // NOLINT
 
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::IsEnd() -> bool {
