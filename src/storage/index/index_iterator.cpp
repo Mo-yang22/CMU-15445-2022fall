@@ -38,7 +38,6 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
   if (index_ >= cur_node_->GetSize() && cur_node_->GetNextPageId() != INVALID_PAGE_ID) {
     Page *next_page = buffer_pool_manager_->FetchPage(cur_node_->GetNextPageId());
     auto next_node = reinterpret_cast<LeafPage *>(next_page->GetData());
-    
     Page *page = buffer_pool_manager_->FetchPage(cur_node_->GetPageId());
     next_page->RLatch();
     page->RUnlatch();
