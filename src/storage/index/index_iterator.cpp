@@ -42,7 +42,7 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
     Page *page = buffer_pool_manager_->FetchPage(cur_node_->GetPageId());
     next_page->RLatch();
     page->RUnlatch();
-    buffer_pool_manager->UnpinPage(page->GetPageId(), false);
+    buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
     buffer_pool_manager_->UnpinPage(cur_node_->GetPageId(), false);
     cur_node_ = next_node;
     index_ = 0;
