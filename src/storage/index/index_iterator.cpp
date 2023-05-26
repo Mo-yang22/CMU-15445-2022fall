@@ -36,8 +36,13 @@ INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
   index_++;
   if (index_ >= cur_node_->GetSize() && cur_node_->GetNextPageId() != INVALID_PAGE_ID) {
-    auto next_node =
-        reinterpret_cast<LeafPage *>(buffer_pool_manager_->FetchPage(cur_node_->GetNextPageId())->GetData());
+    Page *next_page = buffer_pool_manager_->FetchPage(cur_node_->GetNextPageId());
+    auto next_node = reinterpret_cast<LeafPage *>(next_page->GetData());
+    
+    Page *page = buffer_pool_manager_->FetchPage(cur_node->GetPageId());
+    next_page->RLatch();
+    page->RUnlatch();
+    buffer_pool_manager->UnpinPage(page->GetPageId(), false);
     buffer_pool_manager_->UnpinPage(cur_node_->GetPageId(), false);
     cur_node_ = next_node;
     index_ = 0;
