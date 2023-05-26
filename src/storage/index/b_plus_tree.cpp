@@ -71,14 +71,15 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) -> bool {
-  root_latch_.WLock();
-  transaction->AddIntoPageSet(nullptr);
   if (IsEmpty()) {
     // create an empty leaf node L, which is also the root, then insert
+    root_latch_.WLock();
+    transaction->AddIntoPageSet(nullptr);
     StartNewTree(key, value);
     ReleaseLatchFromQueue(Operation::INSERT, transaction);
     return true;
   }
+  root_latch_.RLock();
   // 不管怎么样,一定能找到叶子节点
   // Find the leaf node L that should contain key value K
   auto node = FindLeaf(key, Operation::INSERT, transaction);
@@ -211,12 +212,13 @@ void BPLUSTREE_TYPE::StartNewTree(const KeyType &key, const ValueType &value) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
-  root_latch_.WLock();
-  transaction->AddIntoPageSet(nullptr);
   if (IsEmpty()) {
+    root_latch_.WLock();
+    transaction->AddIntoPageSet(nullptr);
     ReleaseLatchFromQueue(Operation::DELETE, transaction);
     return;
   }
+  root_latch_.RLock();
   auto node = FindLeaf(key, Operation::DELETE, transaction);
   auto leaf_node = reinterpret_cast<LeafPage *>(node);
   RemoveEntry(leaf_node, key, transaction);
@@ -449,14 +451,14 @@ auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { return root_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Operation operation, Transaction *transaction, bool leftMost,
-                              bool rightMost) -> BPlusTreePage * {
+                              bool rightMost, bool first_pass) -> BPlusTreePage * {
   assert(operation == Operation::SEARCH ? !(leftMost && rightMost) : transaction != nullptr);
   assert(root_page_id_ != INVALID_PAGE_ID);
   auto cur_page = buffer_pool_manager_->FetchPage(root_page_id_);
   auto *cur_node = reinterpret_cast<BPlusTreePage *>(cur_page->GetData());
 
   // 对当前节点加锁
-  if (operation == Operation::SEARCH) {
+  if (operation == Operation::SEARCH || first_pass) {
     root_latch_.RUnlock();
     cur_page->RLatch();
   } else {
@@ -481,7 +483,7 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Operation operation, Transacti
     next_page = buffer_pool_manager_->FetchPage(next_page_id);
     next_node = reinterpret_cast<BPlusTreePage *>(next_page->GetData());
 
-    if (operation == Operation::SEARCH) {
+    if (operation == Operation::SEARCH || first_pass) {
       next_page->RLatch();
       cur_page->RUnlatch();
       buffer_pool_manager_->UnpinPage(cur_page->GetPageId(), false);
@@ -494,6 +496,22 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Operation operation, Transacti
     }
     cur_page = next_page;
     cur_node = next_node;
+  }
+  if (first_pass) {
+    if (operation == Operation::SEARCH) {
+      return cur_node;
+    }
+    if (IsPageSafe(cur_node, operation)) {
+      cur_page->RUnlatch();
+      cur_page->WLatch();
+      transaction->AddIntoPageSet(cur_page);
+      return cur_node;
+    }
+    cur_page->RUnlatch();
+    buffer_pool_manager_->UnpinPage(cur_page->GetPageId(), false);
+    root_latch_.WLock();
+    transaction->AddIntoPageSet(nullptr);
+    return FindLeaf(key, operation, transaction, leftMost, rightMost, false);
   }
   return cur_node;
 }
