@@ -39,7 +39,7 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
     Page *next_page = buffer_pool_manager_->FetchPage(cur_node_->GetNextPageId());
     auto next_node = reinterpret_cast<LeafPage *>(next_page->GetData());
     
-    Page *page = buffer_pool_manager_->FetchPage(cur_node->GetPageId());
+    Page *page = buffer_pool_manager_->FetchPage(cur_node_->GetPageId());
     next_page->RLatch();
     page->RUnlatch();
     buffer_pool_manager->UnpinPage(page->GetPageId(), false);
