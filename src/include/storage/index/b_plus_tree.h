@@ -86,7 +86,7 @@ class BPlusTree {
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
   auto FindLeaf(const KeyType &key, Operation operation = Operation::SEARCH, Transaction *transaction = nullptr,
-                bool leftMost = false, bool rightMost = false) -> BPlusTreePage *;
+                bool leftMost = false, bool rightMost = false) -> Page *;
 
   /**
    * Insert相关的辅助函数

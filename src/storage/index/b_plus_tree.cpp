@@ -41,21 +41,18 @@ INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
   // 对root_page_id上锁
   root_latch_.RLock();
-  auto node = FindLeaf(key, Operation::SEARCH, transaction);
-  auto leaf_node = reinterpret_cast<LeafPage *>(node);
-  Page *page = buffer_pool_manager_->FetchPage(node->GetPageId());
+  auto page = FindLeaf(key, Operation::SEARCH, transaction);
+  auto leaf_node = reinterpret_cast<LeafPage *>(page->GetData());
   ValueType value;
   if (leaf_node->LookUp(key, &value, comparator_)) {
     result->emplace_back(value);
     page->RUnlatch();
     // ?
     buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
-    buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
     return true;
   }
   page->RUnlatch();
   buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
-  buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
   return false;
 }
 
@@ -81,8 +78,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   }
   // 不管怎么样,一定能找到叶子节点
   // Find the leaf node L that should contain key value K
-  auto node = FindLeaf(key, Operation::INSERT, transaction);
-  auto leaf_node = reinterpret_cast<LeafPage *>(node);
+  auto page = FindLeaf(key, Operation::INSERT, transaction);
+  auto leaf_node = reinterpret_cast<LeafPage *>(page->GetData());
 
   // 先看是不是重复的key
   ValueType tmp;
@@ -217,8 +214,8 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
     ReleaseLatchFromQueue(Operation::DELETE, transaction);
     return;
   }
-  auto node = FindLeaf(key, Operation::DELETE, transaction);
-  auto leaf_node = reinterpret_cast<LeafPage *>(node);
+  auto page = FindLeaf(key, Operation::DELETE, transaction);
+  auto leaf_node = reinterpret_cast<LeafPage *>(page->GetData());
   RemoveEntry(leaf_node, key, transaction);
   ReleaseLatchFromQueue(Operation::DELETE, transaction);
   DeleteAllPage(transaction);
@@ -402,12 +399,13 @@ void BPLUSTREE_TYPE::Redistribute(BPlusTreePage *node, BPlusTreePage *sibling_no
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
-  assert(root_page_id_ != INVALID_PAGE_ID);
+  if (root_page_id_ == INVALID_PAGE_ID) {
+    return INDEXITERATOR_TYPE(nullptr, nullptr);
+  }
   KeyType key;
   root_latch_.RLock();
-  auto cur_node = FindLeaf(key, Operation::SEARCH, nullptr, true, false);
-  auto leaf_node = reinterpret_cast<LeafPage *>(cur_node);
-  return INDEXITERATOR_TYPE(leaf_node, 0, buffer_pool_manager_);
+  auto page = FindLeaf(key, Operation::SEARCH, nullptr, true, false);
+  return INDEXITERATOR_TYPE(buffer_pool_manager_, page, 0);
 }
 
 /*
@@ -417,12 +415,14 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
-  assert(root_page_id_ != INVALID_PAGE_ID);
+  if (root_page_id_ == INVALID_PAGE_ID) {
+    return INDEXITERATOR_TYPE(nullptr, nullptr);
+  }
   root_latch_.RLock();
-  auto node = FindLeaf(key, Operation::SEARCH, nullptr);
-  auto leaf_node = reinterpret_cast<LeafPage *>(node);
+  auto page = FindLeaf(key, Operation::SEARCH, nullptr);
+  auto leaf_node = reinterpret_cast<LeafPage *>(page->GetData());
   int index = leaf_node->KeyIndex(key, comparator_);
-  return INDEXITERATOR_TYPE(leaf_node, index, buffer_pool_manager_);
+  return INDEXITERATOR_TYPE(buffer_pool_manager_, page, index);
 }
 
 /*
@@ -432,12 +432,15 @@ auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE {
+  if (root_page_id_ == INVALID_PAGE_ID) {
+    return INDEXITERATOR_TYPE(nullptr, nullptr);
+  }
   assert(root_page_id_ != INVALID_PAGE_ID);
   root_latch_.RLock();
   KeyType key;
-  auto cur_node = FindLeaf(key, Operation::SEARCH, nullptr, false, true);
-  auto leaf_node = reinterpret_cast<LeafPage *>(cur_node);
-  return INDEXITERATOR_TYPE(leaf_node, leaf_node->GetSize(), buffer_pool_manager_);
+  auto page = FindLeaf(key, Operation::SEARCH, nullptr, false, true);
+  auto leaf_node = reinterpret_cast<LeafPage *>(page->GetData());
+  return INDEXITERATOR_TYPE(buffer_pool_manager_, page, leaf_node->GetSize());
 }
 
 /**
@@ -449,7 +452,7 @@ auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { return root_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Operation operation, Transaction *transaction, bool leftMost,
-                              bool rightMost) -> BPlusTreePage * {
+                              bool rightMost) -> Page * {
   assert(operation == Operation::SEARCH ? !(leftMost && rightMost) : transaction != nullptr);
   assert(root_page_id_ != INVALID_PAGE_ID);
   auto cur_page = buffer_pool_manager_->FetchPage(root_page_id_);
@@ -495,7 +498,7 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Operation operation, Transacti
     cur_page = next_page;
     cur_node = next_node;
   }
-  return cur_node;
+  return cur_page;
 }
 
 /*****************************************************************************
