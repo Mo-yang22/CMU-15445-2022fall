@@ -82,6 +82,7 @@ class AggregationPlanNode : public AbstractPlanNode {
   BUSTUB_PLAN_NODE_CLONE_WITH_CHILDREN(AggregationPlanNode);
 
   /** The GROUP BY expressions */
+  // ?是不是假如没有指定group by语句,也会将聚合的那个列视为group by的key
   std::vector<AbstractExpressionRef> group_bys_;
   /** The aggregation expressions */
   std::vector<AbstractExpressionRef> aggregates_;

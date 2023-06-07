@@ -44,7 +44,9 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     table_info->table_->MarkDelete(child_rid, exec_ctx_->GetTransaction());
     for (auto index : indexs) {
       // 一定要注意是怎么删除的
-      index->index_->DeleteEntry(child_tuple.KeyFromTuple(table_info->schema_, index->key_schema_, index->index_->GetKeyAttrs()), child_rid, exec_ctx_->GetTransaction());
+      index->index_->DeleteEntry(
+          child_tuple.KeyFromTuple(table_info->schema_, index->key_schema_, index->index_->GetKeyAttrs()), child_rid,
+          exec_ctx_->GetTransaction());
     }
     delete_count++;
   }
