@@ -63,10 +63,6 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       if (!value.IsNull() && value.GetAs<bool>()) {
         is_none_ = false;
         std::vector<Value> values{};
-        // values.insert(values.end(), left_executor_->GetOutputSchema().GetColumns().begin(),
-        // left_executor_->GetOutputSchema().GetColumns().end()); values.insert(values.end(),
-        // right_executor_->GetOutputSchema().GetColumns().begin(),
-        // right_executor_->GetOutputSchema().GetColumns().end());
         for (uint32_t idx = 0; idx < left_executor_->GetOutputSchema().GetColumnCount(); idx++) {
           values.push_back(left_table_[left_index_].GetValue(&left_executor_->GetOutputSchema(), idx));
         }
