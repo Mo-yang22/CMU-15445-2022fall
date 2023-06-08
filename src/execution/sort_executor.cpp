@@ -22,8 +22,7 @@ void SortExecutor::Init() {
   while (child_executor_->Next(&child_tuple, &child_rid)) {
     tuples_.emplace_back(child_tuple);
   }
-  // 将数据全部排序
-  std::sort(tuples_.begin(), tuples_.end(), [this](const Tuple &a, const Tuple &b) -> bool {
+  auto cmp = [this](const Tuple &a, const Tuple &b) -> bool {
     for (const auto &c : order_by_) {
       Value a_v = c.second->Evaluate(&a, child_executor_->GetOutputSchema());
       Value b_v = c.second->Evaluate(&b, child_executor_->GetOutputSchema());
@@ -37,7 +36,9 @@ void SortExecutor::Init() {
       }
     }
     return false;
-  });
+  };
+  // 将数据全部排序
+  std::sort(tuples_.begin(), tuples_.end(), cmp);
   index_ = 0;
 }
 

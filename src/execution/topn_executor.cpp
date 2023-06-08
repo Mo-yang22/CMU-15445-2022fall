@@ -30,7 +30,6 @@ void TopNExecutor::Init() {
     }
     return false;
   };
-  // 是否要将比较规则反写
   std::priority_queue<Tuple, std::vector<Tuple>, decltype(cmp)> q(cmp);
   Tuple child_tuple{};
   RID child_rid{};
