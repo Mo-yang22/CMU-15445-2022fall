@@ -71,6 +71,8 @@ class LockManager {
     txn_id_t upgrading_ = INVALID_TXN_ID;
     /** coordination */
     std::mutex latch_;
+
+    // std::mutex protect_;
   };
 
   /**
@@ -230,7 +232,7 @@ class LockManager {
    * @param oid the table_oid_t of the table to be unlocked
    * @return true if the unlock is successful, false otherwise
    */
-  auto UnlockTable(Transaction *txn, const table_oid_t &oid) -> bool;
+  auto UnlockTable(Transaction *txn, const table_oid_t &oid, bool is_upgrade = false) -> bool;
 
   /**
    * Acquire a lock on rid in the given lock_mode.
@@ -262,7 +264,7 @@ class LockManager {
    * @param rid the RID of the row to be unlocked
    * @return true if the unlock is successful, false otherwise
    */
-  auto UnlockRow(Transaction *txn, const table_oid_t &oid, const RID &rid) -> bool;
+  auto UnlockRow(Transaction *txn, const table_oid_t &oid, const RID &rid, bool is_upgrade = false) -> bool;
 
   /*** Graph API ***/
 
@@ -299,6 +301,10 @@ class LockManager {
 
  private:
   /** Fall 2022 */
+  auto IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool;
+  auto GrantLock(LockRequestQueue *lock_request_queue, LockRequest *cur_request, Transaction *txn) -> bool;
+  auto GrantRowLock(LockRequestQueue *lock_request_queue, LockRequest *cur_request, Transaction *txn) -> bool;
+  auto IsCompatible(LockMode cur_mode, LockMode mode) -> bool;
   /** Structure that holds lock requests for a given table oid */
   std::unordered_map<table_oid_t, std::shared_ptr<LockRequestQueue>> table_lock_map_;
   /** Coordination */
