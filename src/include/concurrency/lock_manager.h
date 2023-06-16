@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <condition_variable>  // NOLINT
+#include <cstddef>
 #include <list>
 #include <memory>
 #include <mutex>  // NOLINT
@@ -64,7 +65,7 @@ class LockManager {
   class LockRequestQueue {
    public:
     /** List of lock requests for the same resource (table or row) */
-    std::list<LockRequest *> request_queue_;
+    std::list<std::shared_ptr<LockRequest>> request_queue_;
     /** For notifying blocked transactions on this rid */
     std::condition_variable cv_;
     /** txn_id of an upgrading transaction (if any) */
@@ -86,6 +87,27 @@ class LockManager {
   ~LockManager() {
     enable_cycle_detection_ = false;
     cycle_detection_thread_->join();
+    // table_lock_map_latch_.lock();
+    // row_lock_map_latch_.lock();
+    // for (auto &pair : table_lock_map_) {
+    //   for (auto request : pair.second->request_queue_) {
+    //     LOG_DEBUG("DeleteTableRequest : txn_id : %d, table_id : %d", request->txn_id_, request->oid_);
+    //     delete request;
+    //   }
+    // }
+
+    // for (auto &pair : row_lock_map_) {
+    //   for (auto request : pair.second->request_queue_) {
+    //     LOG_DEBUG("DelteRowRequest : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u",
+    //     request->txn_id_,
+    //               request->oid_, request->rid_.GetPageId(), request->rid_.GetSlotNum());
+    //     delete request;
+    //   }
+    // }
+    // table_lock_map_.clear();
+    // row_lock_map_.clear();
+    // row_lock_map_latch_.unlock();
+    // table_lock_map_latch_.unlock();
     delete cycle_detection_thread_;
   }
 
@@ -302,9 +324,12 @@ class LockManager {
  private:
   /** Fall 2022 */
   auto IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool;
-  auto GrantLock(LockRequestQueue *lock_request_queue, LockRequest *cur_request, Transaction *txn) -> bool;
-  auto GrantRowLock(LockRequestQueue *lock_request_queue, LockRequest *cur_request, Transaction *txn) -> bool;
+  auto GrantLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
+                 const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
+  auto GrantRowLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
+                    const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
   auto IsCompatible(LockMode cur_mode, LockMode mode) -> bool;
+  auto DFS(txn_id_t cur) -> bool;
   /** Structure that holds lock requests for a given table oid */
   std::unordered_map<table_oid_t, std::shared_ptr<LockRequestQueue>> table_lock_map_;
   /** Coordination */
@@ -320,6 +345,12 @@ class LockManager {
   /** Waits-for graph representation. */
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
+
+  std::vector<txn_id_t> path_{};
+  int index_{0};
+
+  std::unordered_map<txn_id_t, RID> map_txn_rid_;
+  std::unordered_map<txn_id_t, table_oid_t> map_txn_oid_;
 };
 
 }  // namespace bustub
