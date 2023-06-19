@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <mutex>  // NOLINT
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -87,27 +88,6 @@ class LockManager {
   ~LockManager() {
     enable_cycle_detection_ = false;
     cycle_detection_thread_->join();
-    // table_lock_map_latch_.lock();
-    // row_lock_map_latch_.lock();
-    // for (auto &pair : table_lock_map_) {
-    //   for (auto request : pair.second->request_queue_) {
-    //     LOG_DEBUG("DeleteTableRequest : txn_id : %d, table_id : %d", request->txn_id_, request->oid_);
-    //     delete request;
-    //   }
-    // }
-
-    // for (auto &pair : row_lock_map_) {
-    //   for (auto request : pair.second->request_queue_) {
-    //     LOG_DEBUG("DelteRowRequest : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u",
-    //     request->txn_id_,
-    //               request->oid_, request->rid_.GetPageId(), request->rid_.GetSlotNum());
-    //     delete request;
-    //   }
-    // }
-    // table_lock_map_.clear();
-    // row_lock_map_.clear();
-    // row_lock_map_latch_.unlock();
-    // table_lock_map_latch_.unlock();
     delete cycle_detection_thread_;
   }
 
@@ -329,7 +309,8 @@ class LockManager {
   auto GrantRowLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
                     const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
   auto IsCompatible(LockMode cur_mode, LockMode mode) -> bool;
-  auto DFS(txn_id_t cur) -> bool;
+  auto Dfs(txn_id_t txn_id) -> bool;
+  auto DeleteNode(txn_id_t txn_id) -> void;
   /** Structure that holds lock requests for a given table oid */
   std::unordered_map<table_oid_t, std::shared_ptr<LockRequestQueue>> table_lock_map_;
   /** Coordination */
@@ -346,9 +327,12 @@ class LockManager {
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
 
-  std::vector<txn_id_t> path_{};
-  int index_{0};
+  // std::vector<txn_id_t> path_{};
+  // int index_{0};
 
+  std::set<txn_id_t> safe_set_;
+  std::set<txn_id_t> txn_set_;
+  std::unordered_set<txn_id_t> active_set_;
   std::unordered_map<txn_id_t, RID> map_txn_rid_;
   std::unordered_map<txn_id_t, table_oid_t> map_txn_oid_;
 };
