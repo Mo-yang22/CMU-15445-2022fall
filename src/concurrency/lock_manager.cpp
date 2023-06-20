@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>  //NOLINT
+#include <shared_mutex>
 #include <vector>
 
 #include "common/config.h"
@@ -360,7 +361,7 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
 
   // 第五步,尝试获取锁
   std::unique_lock<std::mutex> lock(lock_request_queue->latch_, std::adopt_lock);
-  while (!GrantRowLock(lock_request_queue, new_request, txn)) {
+  while (!GrantLock(lock_request_queue, new_request, txn)) {
     lock_request_queue->cv_.wait(lock);
     if (txn->GetState() == TransactionState::ABORTED) {
       if (lock_request_queue->upgrading_ == txn->GetTransactionId()) {
@@ -669,149 +670,6 @@ auto LockManager::Dfs(txn_id_t txn_id) -> bool {
   return false;
 }
 
-// void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {
-//   txn_set_.insert(t1);
-//   txn_set_.insert(t2);
-//   waits_for_[t1].push_back(t2);
-// }
-
-// void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {
-//   auto iter = std::find(waits_for_[t1].begin(), waits_for_[t1].end(), t2);
-//   if (iter != waits_for_[t1].end()) {
-//     waits_for_[t1].erase(iter);
-//   }
-// }
-
-// auto LockManager::HasCycle(txn_id_t *txn_id) -> bool {
-//   for (auto const &start_txn_id : txn_set_) {
-//     if (Dfs(start_txn_id)) {
-//       *txn_id = *active_set_.begin();
-//       for (auto const &active_txn_id : active_set_) {
-//         *txn_id = std::max(*txn_id, active_txn_id);
-//       }
-//       active_set_.clear();
-//       return true;
-//     }
-
-//     active_set_.clear();
-//   }
-//   return false;
-// }
-
-// auto LockManager::DeleteNode(txn_id_t txn_id) -> void {
-//   waits_for_.erase(txn_id);
-
-//   for (auto a_txn_id : txn_set_) {
-//     if (a_txn_id != txn_id) {
-//       RemoveEdge(a_txn_id, txn_id);
-//     }
-//   }
-// }
-
-// auto LockManager::GetEdgeList() -> std::vector<std::pair<txn_id_t, txn_id_t>> {
-//   std::vector<std::pair<txn_id_t, txn_id_t>> result;
-//   for (auto const &pair : waits_for_) {
-//     auto t1 = pair.first;
-//     for (auto const &t2 : pair.second) {
-//       result.emplace_back(t1, t2);
-//     }
-//   }
-//   return result;
-// }
-
-// void LockManager::RunCycleDetection() {
-//   while (enable_cycle_detection_) {
-//     std::this_thread::sleep_for(cycle_detection_interval);
-//     {  // TODO(students): detect deadlock
-//       table_lock_map_latch_.lock();
-//       row_lock_map_latch_.lock();
-//       for (auto &pair : table_lock_map_) {
-//         std::unordered_set<txn_id_t> granted_set;
-//         pair.second->latch_.lock();
-//         for (auto const &lock_request : pair.second->request_queue_) {
-//           if (lock_request->granted_) {
-//             granted_set.emplace(lock_request->txn_id_);
-//           }
-//         }
-//         for (auto const &lock_request : pair.second->request_queue_) {
-//           if (!lock_request->granted_) {
-//             for (auto txn_id : granted_set) {
-//               map_txn_oid_.emplace(lock_request->txn_id_, lock_request->oid_);
-//               AddEdge(lock_request->txn_id_, txn_id);
-//             }
-//           }
-//         }
-//         pair.second->latch_.unlock();
-//       }
-
-//       for (auto &pair : row_lock_map_) {
-//         std::unordered_set<txn_id_t> granted_set;
-//         pair.second->latch_.lock();
-//         for (auto const &lock_request : pair.second->request_queue_) {
-//           if (lock_request->granted_) {
-//             granted_set.emplace(lock_request->txn_id_);
-//           } else {
-//             for (auto txn_id : granted_set) {
-//               map_txn_rid_.emplace(lock_request->txn_id_, lock_request->rid_);
-//               AddEdge(lock_request->txn_id_, txn_id);
-//             }
-//           }
-//         }
-//         pair.second->latch_.unlock();
-//       }
-
-//       row_lock_map_latch_.unlock();
-//       table_lock_map_latch_.unlock();
-
-//       txn_id_t txn_id;
-//       while (HasCycle(&txn_id)) {
-//         Transaction *txn = TransactionManager::GetTransaction(txn_id);
-//         txn->SetState(TransactionState::ABORTED);
-//         DeleteNode(txn_id);
-
-//         if (map_txn_oid_.count(txn_id) > 0) {
-//           table_lock_map_[map_txn_oid_[txn_id]]->latch_.lock();
-//           table_lock_map_[map_txn_oid_[txn_id]]->cv_.notify_all();
-//           table_lock_map_[map_txn_oid_[txn_id]]->latch_.unlock();
-//         }
-
-//         if (map_txn_rid_.count(txn_id) > 0) {
-//           row_lock_map_[map_txn_rid_[txn_id]]->latch_.lock();
-//           row_lock_map_[map_txn_rid_[txn_id]]->cv_.notify_all();
-//           row_lock_map_[map_txn_rid_[txn_id]]->latch_.unlock();
-//         }
-//       }
-
-//       waits_for_.clear();
-//       safe_set_.clear();
-//       txn_set_.clear();
-//       map_txn_oid_.clear();
-//       map_txn_rid_.clear();
-//     }
-//   }
-// }
-// auto LockManager::Dfs(txn_id_t txn_id) -> bool {
-//   if (safe_set_.find(txn_id) != safe_set_.end()) {
-//     return false;
-//   }
-//   active_set_.insert(txn_id);
-
-//   std::vector<txn_id_t> &next_node_vector = waits_for_[txn_id];
-//   std::sort(next_node_vector.begin(), next_node_vector.end());
-//   for (txn_id_t const next_node : next_node_vector) {
-//     if (active_set_.find(next_node) != active_set_.end()) {
-//       return true;
-//     }
-//     if (Dfs(next_node)) {
-//       return true;
-//     }
-//   }
-
-//   active_set_.erase(txn_id);
-//   safe_set_.insert(txn_id);
-//   return false;
-// }
-
 auto LockManager::IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool {
   switch (cur_mode) {
     case LockMode::EXCLUSIVE:
@@ -835,72 +693,57 @@ auto LockManager::IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool {
 auto LockManager::GrantLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
                             const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool {
   // 1.看跟已授予lock的类型是不是相容,注意要看所有的,不能只看单个
-  // ?是不是要加request->rid_ == RID()
+
+  std::vector<LockMode> grant_txn_mode{};
+  std::shared_ptr<LockRequest> upgrade_req = cur_request;
   for (auto &request : lock_request_queue->request_queue_) {
-    if (request->granted_ && request->rid_ == RID() && !IsCompatible(cur_request->lock_mode_, request->lock_mode_)) {
-      return false;
+    if (lock_request_queue->upgrading_ != INVALID_TXN_ID && lock_request_queue->upgrading_ == request->txn_id_) {
+      upgrade_req = request;
+    }
+    if (request->granted_) {
+      grant_txn_mode.emplace_back(request->lock_mode_);
+      if (!IsCompatible(cur_request->lock_mode_, request->lock_mode_)) {
+        return false;
+      }
     }
   }
   // 2.看是否当前请求是升级锁的请求
-  // ?是不是当有升级要求然后自己不是就直接G
   if (lock_request_queue->upgrading_ != INVALID_TXN_ID) {
-    if (lock_request_queue->upgrading_ != cur_request->txn_id_) {
+    if (lock_request_queue->upgrading_ == cur_request->txn_id_) {
+      cur_request->granted_ = true;
+      return true;
+    }
+    if (!IsCompatible(cur_request->lock_mode_, upgrade_req->lock_mode_)) {
       return false;
     }
-    // 授予锁
-    cur_request->granted_ = true;
-    lock_request_queue->upgrading_ = INVALID_TXN_ID;
-    return true;
+    for (auto mode : grant_txn_mode) {
+      if (!IsCompatible(upgrade_req->lock_mode_, mode)) {
+        return false;
+      }
+    }
   }
   // 3.再次遍历,前面的waiting 的request必须与现在这个相兼容
   bool is_grant = false;
   for (auto &request : lock_request_queue->request_queue_) {
-    if (!request->granted_ && request->txn_id_ == cur_request->txn_id_) {
-      is_grant = true;
-      break;
-    }
-    if (!request->granted_ && request->rid_ == RID() && !IsCompatible(request->lock_mode_, cur_request->lock_mode_)) {
-      break;
-    }
-  }
-  if (!is_grant) {
-    return false;
-  }
-  cur_request->granted_ = true;
-  return true;
-}
-// 是不是可以这样理解,在考虑是不是赋予row锁时,不需要考虑其他事务对于这个表的影响,因为我一定要先获得表锁,就相当于我有赋予某个锁的能力
-// 只需看是否在这个row上是否与其他事务(有可能是同一个事务)产生冲突
-auto LockManager::GrantRowLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
-                               const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool {
-  // 1.看跟已授予lock的类型是不是相容,注意要看所有的,不能只看单个
-  for (auto &request : lock_request_queue->request_queue_) {
-    if (request->granted_ && request->rid_ == cur_request->rid_ &&
-        !IsCompatible(cur_request->lock_mode_, request->lock_mode_)) {
-      return false;
-    }
-  }
-  // 2.看是否当前请求是升级锁的请求
-  // ?是不是当有升级要求然后自己不是就直接G
-  if (lock_request_queue->upgrading_ != INVALID_TXN_ID) {
-    if (lock_request_queue->upgrading_ != cur_request->txn_id_) {
-      return false;
-    }
-    // 授予锁
-    cur_request->granted_ = true;
-    lock_request_queue->upgrading_ = INVALID_TXN_ID;
-    return true;
-  }
-  // 3.再次遍历,前面的waiting 的request必须与现在这个相兼容
-  bool is_grant = false;
-  for (auto &request : lock_request_queue->request_queue_) {
-    if (!request->granted_ && request->txn_id_ == cur_request->txn_id_) {
-      is_grant = true;
-      break;
-    }
-    if (!request->granted_ && request->rid_ == cur_request->rid_ &&
-        !IsCompatible(request->lock_mode_, cur_request->lock_mode_)) {
-      break;
+    if (!request->granted_) {
+      if (request->txn_id_ == cur_request->txn_id_) {
+        is_grant = true;
+        break;
+      }
+      if (!IsCompatible(cur_request->lock_mode_, request->lock_mode_)) {
+        break;
+      }
+      // ?????
+      bool is_finish = false;
+      for (auto mode : grant_txn_mode) {
+        if (!IsCompatible(mode, request->lock_mode_)) {
+          is_finish = true;
+          break;
+        }
+      }
+      if (is_finish) {
+        break;
+      }
     }
   }
   if (!is_grant) {

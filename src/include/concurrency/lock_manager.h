@@ -306,8 +306,6 @@ class LockManager {
   auto IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool;
   auto GrantLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
                  const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
-  auto GrantRowLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
-                    const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
   auto IsCompatible(LockMode cur_mode, LockMode mode) -> bool;
   auto Dfs(txn_id_t txn_id) -> bool;
   auto DeleteNode(txn_id_t txn_id) -> void;
