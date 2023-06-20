@@ -75,14 +75,19 @@ auto LockManager::LockTable(Transaction *txn, LockMode lock_mode, const table_oi
   for (auto &request : lock_request_queue->request_queue_) {
     if (request->txn_id_ == txn->GetTransactionId()) {
       // 1.判断是否可以升级
+      // if (!request->granted_) {
+      //   LOG_DEBUG("fuck");
+      //   lock_request_queue->latch_.unlock();
+      //   return false;
+      // }
+      if (lock_mode == request->lock_mode_) {
+        lock_request_queue->latch_.unlock();
+        return true;
+      }
       if (lock_request_queue->upgrading_ != INVALID_TXN_ID) {
         lock_request_queue->latch_.unlock();
         txn->SetState(TransactionState::ABORTED);
         throw TransactionAbortException{txn->GetTransactionId(), AbortReason::UPGRADE_CONFLICT};
-      }
-      if (lock_mode == request->lock_mode_) {
-        lock_request_queue->latch_.unlock();
-        return true;
       }
       if (!IsUpgradeLegal(request->lock_mode_, lock_mode)) {
         lock_request_queue->latch_.unlock();
@@ -115,7 +120,7 @@ auto LockManager::LockTable(Transaction *txn, LockMode lock_mode, const table_oi
 
       lock_request_queue->request_queue_.remove(new_request);
       lock_request_queue->cv_.notify_all();
-      lock_request_queue->latch_.unlock();
+      // lock_request_queue->latch_.unlock();
       return false;
     }
   }
@@ -141,7 +146,8 @@ auto LockManager::LockTable(Transaction *txn, LockMode lock_mode, const table_oi
     case LockMode::SHARED_INTENTION_EXCLUSIVE:
       txn->GetSharedIntentionExclusiveTableLockSet()->emplace(oid);
   }
-  lock_request_queue->latch_.unlock();
+  // lock_request_queue->latch_.unlock();
+  LOG_DEBUG("----------------- LockTable Finish : txn_id : %d, table_id : %d", txn->GetTransactionId(), oid);
   return true;
 }
 
@@ -233,7 +239,7 @@ auto LockManager::UnlockTable(Transaction *txn, const table_oid_t &oid, bool is_
   lock_request_queue->request_queue_.remove(iter);
   lock_request_queue->cv_.notify_all();
   lock_request_queue->latch_.unlock();
-
+  LOG_DEBUG("----------------- UnLockTable Finish : txn_id : %d, table_id : %d", txn->GetTransactionId(), oid);
   return true;
 }
 
@@ -245,6 +251,7 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
   if (lock_mode == LockMode::EXCLUSIVE) {
     if (!txn->IsTableExclusiveLocked(oid) && !txn->IsTableIntentionExclusiveLocked(oid) &&
         !txn->IsTableSharedIntentionExclusiveLocked(oid)) {
+      LOG_DEBUG("reason 1");
       txn->SetState(TransactionState::ABORTED);
       throw TransactionAbortException{txn->GetTransactionId(), AbortReason::TABLE_LOCK_NOT_PRESENT};
     }
@@ -254,10 +261,12 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
         !txn->IsTableExclusiveLocked(oid) && !txn->IsTableSharedIntentionExclusiveLocked(oid) &&
         !txn->IsTableIntentionExclusiveLocked(oid)) {
       txn->SetState(TransactionState::ABORTED);
+      LOG_DEBUG("reason 2");
       throw TransactionAbortException{txn->GetTransactionId(), AbortReason::TABLE_LOCK_NOT_PRESENT};
     }
   } else {
     txn->SetState(TransactionState::ABORTED);
+    LOG_DEBUG("reason 3");
     throw TransactionAbortException{txn->GetTransactionId(), AbortReason::ATTEMPTED_INTENTION_LOCK_ON_ROW};
   }
 
@@ -266,30 +275,35 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
   IsolationLevel level = txn->GetIsolationLevel();
   if (state == TransactionState::ABORTED || state == TransactionState::COMMITTED) {
     txn->SetState(TransactionState::ABORTED);
+    LOG_DEBUG("reason 4");
     throw("mother fucker");
   }
   if (state == TransactionState::SHRINKING) {
     if (level == IsolationLevel::REPEATABLE_READ) {
       txn->SetState(TransactionState::ABORTED);
+      LOG_DEBUG("reason 5");
       throw TransactionAbortException{txn->GetTransactionId(), AbortReason::LOCK_ON_SHRINKING};
-      return false;
     }
     if (level == IsolationLevel::READ_COMMITTED) {
       if (lock_mode == LockMode::EXCLUSIVE) {
         txn->SetState(TransactionState::ABORTED);
+        LOG_DEBUG("reason 6");
         throw TransactionAbortException{txn->GetTransactionId(), AbortReason::LOCK_ON_SHRINKING};
       }
     } else if (level == IsolationLevel::READ_UNCOMMITTED) {
       if (lock_mode == LockMode::EXCLUSIVE) {
         txn->SetState(TransactionState::ABORTED);
+        LOG_DEBUG("reason 1");
         throw TransactionAbortException{txn->GetTransactionId(), AbortReason::LOCK_ON_SHRINKING};
       }
       txn->SetState(TransactionState::ABORTED);
+      LOG_DEBUG("reason 1");
       throw TransactionAbortException{txn->GetTransactionId(), AbortReason::LOCK_SHARED_ON_READ_UNCOMMITTED};
     }
   } else if (state == TransactionState::GROWING && level == IsolationLevel::READ_UNCOMMITTED &&
              (lock_mode == LockMode::SHARED)) {
     txn->SetState(TransactionState::ABORTED);
+    LOG_DEBUG("reason 1");
     throw TransactionAbortException{txn->GetTransactionId(), AbortReason::LOCK_SHARED_ON_READ_UNCOMMITTED};
   }
 
@@ -307,18 +321,27 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
   for (const auto &request : lock_request_queue->request_queue_) {
     if (request->txn_id_ == txn->GetTransactionId() && request->oid_ == oid && request->rid_ == rid) {
       // 1.判断是否可以升级
-      if (lock_request_queue->upgrading_ != INVALID_TXN_ID) {
+      if (!request->granted_) {
+        LOG_DEBUG("fuck");
         lock_request_queue->latch_.unlock();
-        txn->SetState(TransactionState::ABORTED);
-        throw TransactionAbortException{txn->GetTransactionId(), AbortReason::UPGRADE_CONFLICT};
+        return true;
       }
+      // 这个要先判断?谁能想到呀
       if (lock_mode == request->lock_mode_) {
         lock_request_queue->latch_.unlock();
         return true;
       }
+      if (lock_request_queue->upgrading_ != INVALID_TXN_ID &&
+          lock_request_queue->upgrading_ != txn->GetTransactionId()) {
+        lock_request_queue->latch_.unlock();
+        txn->SetState(TransactionState::ABORTED);
+        LOG_DEBUG("reason 1");
+        throw TransactionAbortException{txn->GetTransactionId(), AbortReason::UPGRADE_CONFLICT};
+      }
       if (!IsUpgradeLegal(request->lock_mode_, lock_mode)) {
         lock_request_queue->latch_.unlock();
         txn->SetState(TransactionState::ABORTED);
+        LOG_DEBUG("reason 1");
         throw TransactionAbortException{txn->GetTransactionId(), AbortReason::INCOMPATIBLE_UPGRADE};
       }
 
@@ -346,7 +369,7 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
       lock_request_queue->request_queue_.remove(new_request);
 
       lock_request_queue->cv_.notify_all();
-      lock_request_queue->latch_.unlock();
+      // lock_request_queue->latch_.unlock();
       return false;
     }
   }
@@ -354,26 +377,31 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
   if (lock_request_queue->upgrading_ == txn->GetTransactionId()) {
     lock_request_queue->upgrading_ = INVALID_TXN_ID;
   }
+
   // 进行Transaction集合的维护
   if (lock_mode == LockMode::SHARED) {
     txn->GetSharedLockSet()->emplace(rid);
     if (txn->GetSharedRowLockSet()->find(oid) == txn->GetSharedRowLockSet()->end()) {
-      txn->GetSharedRowLockSet()->emplace(std::make_pair(oid, std::unordered_set<RID>()));
+      txn->GetSharedRowLockSet()->emplace(oid, std::unordered_set<RID>{});
     }
-    txn->GetSharedRowLockSet()->at(oid).emplace(rid);
+    assert(txn->GetSharedRowLockSet()->find(oid) != txn->GetSharedRowLockSet()->end());
+    txn->GetSharedRowLockSet()->find(oid)->second.emplace(rid);
   } else if (lock_mode == LockMode::EXCLUSIVE) {
     txn->GetExclusiveLockSet()->emplace(rid);
     if (txn->GetExclusiveRowLockSet()->find(oid) == txn->GetExclusiveRowLockSet()->end()) {
-      txn->GetExclusiveRowLockSet()->emplace(std::make_pair(oid, std::unordered_set<RID>()));
+      txn->GetExclusiveRowLockSet()->emplace(oid, std::unordered_set<RID>{});
     }
-    txn->GetExclusiveRowLockSet()->at(oid).emplace(rid);
+    assert(txn->GetExclusiveRowLockSet()->find(oid) != txn->GetExclusiveRowLockSet()->end());
+    txn->GetExclusiveRowLockSet()->find(oid)->second.emplace(rid);
   }
-  lock_request_queue->latch_.unlock();
+  // lock_request_queue->latch_.unlock();
+  LOG_DEBUG("----------------- Finish LockRow : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u",
+            txn->GetTransactionId(), oid, rid.GetPageId(), rid.GetSlotNum());
   return true;
 }
 
 auto LockManager::UnlockRow(Transaction *txn, const table_oid_t &oid, const RID &rid, bool is_upgrade) -> bool {
-  LOG_DEBUG("LockRow : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u", txn->GetTransactionId(), oid,
+  LOG_DEBUG("UnLockRow : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u", txn->GetTransactionId(), oid,
             rid.GetPageId(), rid.GetSlotNum());
   TransactionState state = txn->GetState();
   IsolationLevel level = txn->GetIsolationLevel();
@@ -424,10 +452,15 @@ auto LockManager::UnlockRow(Transaction *txn, const table_oid_t &oid, const RID 
   // 进行事务锁集合的维护
   if (cur_lock_mode == LockMode::SHARED) {
     txn->GetSharedLockSet()->erase(rid);
-    txn->GetSharedRowLockSet()->at(oid).erase(rid);
+    // ?这里好离谱呀,为什么要加这样一个判断条件,竟然可能不存在
+    if (txn->GetSharedRowLockSet()->find(oid) != txn->GetSharedRowLockSet()->end()) {
+      txn->GetSharedRowLockSet()->at(oid).erase(rid);
+    }
   } else if (cur_lock_mode == LockMode::EXCLUSIVE) {
     txn->GetExclusiveLockSet()->erase(rid);
-    txn->GetExclusiveRowLockSet()->at(oid).erase(rid);
+    if (txn->GetExclusiveRowLockSet()->find(oid) != txn->GetExclusiveRowLockSet()->end()) {
+      txn->GetExclusiveRowLockSet()->at(oid).erase(rid);
+    }
   }
   // 核心步骤,释放锁
 
@@ -436,335 +469,348 @@ auto LockManager::UnlockRow(Transaction *txn, const table_oid_t &oid, const RID 
   lock_request_queue->cv_.notify_all();
   lock_request_queue->latch_.unlock();
 
+  LOG_DEBUG(" ----------------- Finish UnLockRow : txn_id : %d, table_id : %d, rid_page_id: %d, rid_slot_num : %u",
+            txn->GetTransactionId(), oid, rid.GetPageId(), rid.GetSlotNum());
   return true;
 }
-
-// void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {
-//   waits_for_latch_.lock();
-//   if (waits_for_.find(t1) == waits_for_.end()) {
-//     waits_for_.emplace(t1, std::vector<txn_id_t>());
-//   }
-
-//   // 如果这条边已经存在,直接返回
-//   if (std::find(waits_for_.at(t1).begin(), waits_for_.at(t1).end(), t2) != waits_for_.at(t1).end()) {
-//     waits_for_latch_.unlock();
-//     return;
-//   }
-//   waits_for_.at(t1).emplace_back(t2);
-//   waits_for_latch_.unlock();
-// }
-
-// void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {
-//   waits_for_latch_.lock();
-//   if (waits_for_.find(t1) == waits_for_.end()) {
-//     waits_for_latch_.unlock();
-//     return;
-//   }
-//   std::vector<txn_id_t> v = waits_for_.at(t1);
-//   auto iter = std::find(v.begin(), v.end(), t2);
-//   if (iter == v.end()) {
-//     waits_for_latch_.unlock();
-//     return;
-//   }
-//   v.erase(iter);
-//   if (v.empty()) {
-//     waits_for_.erase(t1);
-//   }
-//   waits_for_latch_.unlock();
-// }
-
-// auto LockManager::HasCycle(txn_id_t *txn_id) -> bool {
-//   waits_for_latch_.lock();
-//   // 首先排序,从最小的txn_id开始找
-//   std::vector<txn_id_t> sort_v{};
-//   for (const auto &wait : waits_for_) {
-//     sort_v.emplace_back(wait.first);
-//   }
-//   // LOG_DEBUG("number of txns: %ld", sort_v.size());
-//   std::sort(sort_v.begin(), sort_v.end());
-//   for (auto i : sort_v) {
-//     path_.emplace_back(i);
-//     auto status = DFS(i);
-//     if (status) {
-//       // 找最年轻的txn的id返回
-//       txn_id_t max_txn_id = -1;
-//       for (size_t j = index_; j < path_.size(); ++j) {
-//         if (path_[j] > max_txn_id) {
-//           max_txn_id = path_[j];
-//         }
-//       }
-//       assert(max_txn_id != -1);
-//       *txn_id = max_txn_id;
-//       path_.clear();
-//       index_ = 0;
-//       waits_for_latch_.unlock();
-//       return true;
-//     }
-//     path_.pop_back();
-//   }
-//   path_.clear();
-//   index_ = 0;
-//   waits_for_latch_.unlock();
-//   return false;
-// }
-
-// auto LockManager::GetEdgeList() -> std::vector<std::pair<txn_id_t, txn_id_t>> {
-//   waits_for_latch_.lock();
-//   std::vector<std::pair<txn_id_t, txn_id_t>> edges(0);
-//   for (const auto &i : waits_for_) {
-//     for (auto j : i.second) {
-//       edges.emplace_back(i.first, j);
-//     }
-//   }
-//   waits_for_latch_.unlock();
-//   return edges;
-// }
-
-// void LockManager::RunCycleDetection() {
-//   while (enable_cycle_detection_) {
-//     std::this_thread::sleep_for(cycle_detection_interval);
-//     {  // TODO(students): detect deadlock
-//       std::vector<txn_id_t> grant_txn_id{};
-//       // 第一步 建图
-//       table_lock_map_latch_.lock();
-//       row_lock_map_latch_.lock();
-//       for (const auto &table_lock : table_lock_map_) {
-//         // 将所有已经授予资源的txn放在一起
-//         table_lock.second->latch_.lock();
-//         for (const auto &request : (table_lock.second->request_queue_)) {
-//           if (request->granted_) {
-//             grant_txn_id.emplace_back(request->txn_id_);
-//           }
-//         }
-//         // 再遍历一次,对于每个缺资源的和有资源的都要建立一条边
-//         for (const auto &request : table_lock.second->request_queue_) {
-//           if (!request->granted_) {
-//             for (auto txn_id : grant_txn_id) {
-//               map_txn_oid_.emplace(request->txn_id_, request->oid_);
-//               AddEdge(request->txn_id_, txn_id);
-//             }
-//           }
-//         }
-//         table_lock.second->latch_.unlock();
-//         grant_txn_id.clear();
-//       }
-//       table_lock_map_latch_.unlock();
-
-//       // 继续建图
-//       for (const auto &row_lock : row_lock_map_) {
-//         row_lock.second->latch_.lock();
-//         for (auto &request : row_lock.second->request_queue_) {
-//           if (request->granted_) {
-//             grant_txn_id.emplace_back(request->txn_id_);
-//           }
-//         }
-//         for (auto &request : row_lock.second->request_queue_) {
-//           if (!request->granted_) {
-//             for (auto txn_id : grant_txn_id) {
-//               map_txn_rid_.emplace(request->txn_id_, request->rid_);
-//               AddEdge(request->txn_id_, txn_id);
-//             }
-//           }
-//         }
-//         row_lock.second->latch_.unlock();
-//         grant_txn_id.clear();
-//       }
-//       row_lock_map_latch_.unlock();
-//       // 用while,因为可能不止一个死循环
-//       txn_id_t cycle_txn;
-//       while (HasCycle(&cycle_txn)) {
-//         TransactionManager::GetTransaction(cycle_txn)->SetState(TransactionState::ABORTED);
-//         // 开删
-//         // 先删这个事务指向的
-//         waits_for_.erase(cycle_txn);
-//         // 再删被指向的
-//         for (auto &wait : waits_for_) {
-//           assert(wait.first != cycle_txn);
-//           RemoveEdge(wait.first, cycle_txn);
-//         }
-//         if (map_txn_oid_.count(cycle_txn) > 0) {
-//           table_lock_map_[map_txn_oid_[cycle_txn]]->latch_.lock();
-//           table_lock_map_[map_txn_oid_[cycle_txn]]->cv_.notify_all();
-//           table_lock_map_[map_txn_oid_[cycle_txn]]->latch_.unlock();
-//         }
-
-//         if (map_txn_rid_.count(cycle_txn) > 0) {
-//           row_lock_map_[map_txn_rid_[cycle_txn]]->latch_.lock();
-//           row_lock_map_[map_txn_rid_[cycle_txn]]->cv_.notify_all();
-//           row_lock_map_[map_txn_rid_[cycle_txn]]->latch_.unlock();
-//         }
-//       }
-//       waits_for_.clear();
-//       map_txn_oid_.clear();
-//       map_txn_rid_.clear();
-//     }
-//   }
-// }
-
-// auto LockManager::DFS(txn_id_t cur) -> bool {
-//   // ?我是个傻逼
-//   if (waits_for_.find(cur) == waits_for_.end()) {
-//     return false;
-//   }
-//   std::vector<txn_id_t> tmp(waits_for_.at(cur));
-//   std::sort(tmp.begin(), tmp.end());
-//   for (auto txn_id : tmp) {
-//     for (size_t i = 0; i < path_.size(); ++i) {
-//       if (path_[i] == cur) {
-//         index_ = i;
-//         return true;
-//       }
-//     }
-//     path_.emplace_back(txn_id);
-//     auto status = DFS(txn_id);
-//     if (status) {
-//       return true;
-//     }
-//     path_.pop_back();
-//   }
-
-//   return false;
-// }
 
 void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {
   txn_set_.insert(t1);
   txn_set_.insert(t2);
-  waits_for_[t1].push_back(t2);
+  waits_for_latch_.lock();
+  if (waits_for_.find(t1) == waits_for_.end()) {
+    waits_for_.emplace(t1, std::vector<txn_id_t>());
+  }
+
+  // // 如果这条边已经存在,直接返回
+  // if (std::find(waits_for_.at(t1).begin(), waits_for_.at(t1).end(), t2) != waits_for_.at(t1).end()) {
+  //   waits_for_latch_.unlock();
+  //   return;
+  // }
+  waits_for_.at(t1).emplace_back(t2);
+  waits_for_latch_.unlock();
 }
 
 void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {
-  auto iter = std::find(waits_for_[t1].begin(), waits_for_[t1].end(), t2);
-  if (iter != waits_for_[t1].end()) {
-    waits_for_[t1].erase(iter);
+  waits_for_latch_.lock();
+  if (waits_for_.find(t1) == waits_for_.end()) {
+    waits_for_latch_.unlock();
+    return;
   }
+  std::vector<txn_id_t> v = waits_for_.at(t1);
+  auto iter = std::find(v.begin(), v.end(), t2);
+  if (iter == v.end()) {
+    waits_for_latch_.unlock();
+    return;
+  }
+  v.erase(iter);
+  if (v.empty()) {
+    waits_for_.erase(t1);
+  }
+  waits_for_latch_.unlock();
 }
 
 auto LockManager::HasCycle(txn_id_t *txn_id) -> bool {
-  for (auto const &start_txn_id : txn_set_) {
-    if (Dfs(start_txn_id)) {
-      *txn_id = *active_set_.begin();
-      for (auto const &active_txn_id : active_set_) {
-        *txn_id = std::max(*txn_id, active_txn_id);
+  waits_for_latch_.lock();
+  // 首先排序,从最小的txn_id开始找
+  // std::vector<txn_id_t> sort_v{};
+  // for (const auto &wait : waits_for_) {
+  //   sort_v.emplace_back(wait.first);
+  // }
+  // // LOG_DEBUG("number of txns: %ld", sort_v.size());
+  // std::sort(sort_v.begin(), sort_v.end());
+  for (auto i : txn_set_) {
+    path_.emplace_back(i);
+    auto status = Dfs(i);
+    if (status) {
+      // 找最年轻的txn的id返回
+      txn_id_t max_txn_id = -1;
+      for (size_t j = index_; j < path_.size(); ++j) {
+        if (path_[j] > max_txn_id) {
+          max_txn_id = path_[j];
+        }
       }
-      active_set_.clear();
+      assert(max_txn_id != -1);
+      *txn_id = max_txn_id;
+      path_.clear();
+      index_ = 0;
+      waits_for_latch_.unlock();
       return true;
     }
-
-    active_set_.clear();
+    path_.pop_back();
   }
+  path_.clear();
+  index_ = 0;
+  waits_for_latch_.unlock();
   return false;
 }
 
-auto LockManager::DeleteNode(txn_id_t txn_id) -> void {
-  waits_for_.erase(txn_id);
-
-  for (auto a_txn_id : txn_set_) {
-    if (a_txn_id != txn_id) {
-      RemoveEdge(a_txn_id, txn_id);
-    }
-  }
-}
-
 auto LockManager::GetEdgeList() -> std::vector<std::pair<txn_id_t, txn_id_t>> {
-  std::vector<std::pair<txn_id_t, txn_id_t>> result;
-  for (auto const &pair : waits_for_) {
-    auto t1 = pair.first;
-    for (auto const &t2 : pair.second) {
-      result.emplace_back(t1, t2);
+  waits_for_latch_.lock();
+  std::vector<std::pair<txn_id_t, txn_id_t>> edges(0);
+  for (const auto &i : waits_for_) {
+    for (auto j : i.second) {
+      edges.emplace_back(i.first, j);
     }
   }
-  return result;
+  waits_for_latch_.unlock();
+  return edges;
 }
 
 void LockManager::RunCycleDetection() {
   while (enable_cycle_detection_) {
     std::this_thread::sleep_for(cycle_detection_interval);
     {  // TODO(students): detect deadlock
+      std::vector<txn_id_t> grant_txn_id{};
+      // 第一步 建图
       table_lock_map_latch_.lock();
       row_lock_map_latch_.lock();
-      for (auto &pair : table_lock_map_) {
-        std::unordered_set<txn_id_t> granted_set;
-        pair.second->latch_.lock();
-        for (auto const &lock_request : pair.second->request_queue_) {
-          if (lock_request->granted_) {
-            granted_set.emplace(lock_request->txn_id_);
-          } else {
-            for (auto txn_id : granted_set) {
-              map_txn_oid_.emplace(lock_request->txn_id_, lock_request->oid_);
-              AddEdge(lock_request->txn_id_, txn_id);
+      for (const auto &table_lock : table_lock_map_) {
+        // 将所有已经授予资源的txn放在一起
+        table_lock.second->latch_.lock();
+        for (const auto &request : (table_lock.second->request_queue_)) {
+          if (request->granted_) {
+            grant_txn_id.emplace_back(request->txn_id_);
+          }
+        }
+        // 再遍历一次,对于每个缺资源的和有资源的都要建立一条边
+        for (const auto &request : table_lock.second->request_queue_) {
+          if (!request->granted_) {
+            for (auto txn_id : grant_txn_id) {
+              map_txn_oid_.emplace(request->txn_id_, request->oid_);
+              AddEdge(request->txn_id_, txn_id);
             }
           }
         }
-        pair.second->latch_.unlock();
+        table_lock.second->latch_.unlock();
+        grant_txn_id.clear();
       }
-
-      for (auto &pair : row_lock_map_) {
-        std::unordered_set<txn_id_t> granted_set;
-        pair.second->latch_.lock();
-        for (auto const &lock_request : pair.second->request_queue_) {
-          if (lock_request->granted_) {
-            granted_set.emplace(lock_request->txn_id_);
-          } else {
-            for (auto txn_id : granted_set) {
-              map_txn_rid_.emplace(lock_request->txn_id_, lock_request->rid_);
-              AddEdge(lock_request->txn_id_, txn_id);
-            }
-          }
-        }
-        pair.second->latch_.unlock();
-      }
-
-      row_lock_map_latch_.unlock();
       table_lock_map_latch_.unlock();
 
-      txn_id_t txn_id;
-      while (HasCycle(&txn_id)) {
-        Transaction *txn = TransactionManager::GetTransaction(txn_id);
-        txn->SetState(TransactionState::ABORTED);
-        DeleteNode(txn_id);
-
-        if (map_txn_oid_.count(txn_id) > 0) {
-          table_lock_map_[map_txn_oid_[txn_id]]->latch_.lock();
-          table_lock_map_[map_txn_oid_[txn_id]]->cv_.notify_all();
-          table_lock_map_[map_txn_oid_[txn_id]]->latch_.unlock();
+      // 继续建图
+      for (const auto &row_lock : row_lock_map_) {
+        row_lock.second->latch_.lock();
+        for (auto &request : row_lock.second->request_queue_) {
+          if (request->granted_) {
+            grant_txn_id.emplace_back(request->txn_id_);
+          }
+        }
+        for (auto &request : row_lock.second->request_queue_) {
+          if (!request->granted_) {
+            for (auto txn_id : grant_txn_id) {
+              map_txn_rid_.emplace(request->txn_id_, request->rid_);
+              AddEdge(request->txn_id_, txn_id);
+            }
+          }
+        }
+        row_lock.second->latch_.unlock();
+        grant_txn_id.clear();
+      }
+      row_lock_map_latch_.unlock();
+      // 用while,因为可能不止一个死循环
+      txn_id_t cycle_txn;
+      while (HasCycle(&cycle_txn)) {
+        TransactionManager::GetTransaction(cycle_txn)->SetState(TransactionState::ABORTED);
+        // 开删
+        // 先删这个事务指向的
+        waits_for_.erase(cycle_txn);
+        // 再删被指向的
+        // for (auto wait : waits_for_) {  // NOLINT
+        //   assert(wait.first != cycle_txn);
+        //   RemoveEdge(wait.first, cycle_txn);
+        // }
+        for (auto txn_id : txn_set_) {
+          if (txn_id != cycle_txn) {
+            RemoveEdge(txn_id, cycle_txn);
+          }
+        }
+        if (map_txn_oid_.count(cycle_txn) > 0) {
+          table_lock_map_[map_txn_oid_[cycle_txn]]->latch_.lock();
+          table_lock_map_[map_txn_oid_[cycle_txn]]->cv_.notify_all();
+          table_lock_map_[map_txn_oid_[cycle_txn]]->latch_.unlock();
         }
 
-        if (map_txn_rid_.count(txn_id) > 0) {
-          row_lock_map_[map_txn_rid_[txn_id]]->latch_.lock();
-          row_lock_map_[map_txn_rid_[txn_id]]->cv_.notify_all();
-          row_lock_map_[map_txn_rid_[txn_id]]->latch_.unlock();
+        if (map_txn_rid_.count(cycle_txn) > 0) {
+          row_lock_map_[map_txn_rid_[cycle_txn]]->latch_.lock();
+          row_lock_map_[map_txn_rid_[cycle_txn]]->cv_.notify_all();
+          row_lock_map_[map_txn_rid_[cycle_txn]]->latch_.unlock();
         }
       }
-
       waits_for_.clear();
-      safe_set_.clear();
-      txn_set_.clear();
       map_txn_oid_.clear();
       map_txn_rid_.clear();
+      txn_set_.clear();
     }
   }
 }
+
 auto LockManager::Dfs(txn_id_t txn_id) -> bool {
-  if (safe_set_.find(txn_id) != safe_set_.end()) {
+  // ?我是个傻逼
+  if (waits_for_.find(txn_id) == waits_for_.end()) {
     return false;
   }
-  active_set_.insert(txn_id);
-
-  std::vector<txn_id_t> &next_node_vector = waits_for_[txn_id];
-  std::sort(next_node_vector.begin(), next_node_vector.end());
-  for (txn_id_t const next_node : next_node_vector) {
-    if (active_set_.find(next_node) != active_set_.end()) {
+  std::vector<txn_id_t> tmp(waits_for_.at(txn_id));
+  std::sort(tmp.begin(), tmp.end());
+  for (auto txn_id : tmp) {
+    for (size_t i = 0; i < path_.size(); ++i) {
+      if (path_[i] == txn_id) {
+        index_ = i;
+        return true;
+      }
+    }
+    path_.emplace_back(txn_id);
+    auto status = Dfs(txn_id);
+    if (status) {
       return true;
     }
-    if (Dfs(next_node)) {
-      return true;
-    }
+    path_.pop_back();
   }
 
-  active_set_.erase(txn_id);
-  safe_set_.insert(txn_id);
   return false;
 }
+
+// void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {
+//   txn_set_.insert(t1);
+//   txn_set_.insert(t2);
+//   waits_for_[t1].push_back(t2);
+// }
+
+// void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {
+//   auto iter = std::find(waits_for_[t1].begin(), waits_for_[t1].end(), t2);
+//   if (iter != waits_for_[t1].end()) {
+//     waits_for_[t1].erase(iter);
+//   }
+// }
+
+// auto LockManager::HasCycle(txn_id_t *txn_id) -> bool {
+//   for (auto const &start_txn_id : txn_set_) {
+//     if (Dfs(start_txn_id)) {
+//       *txn_id = *active_set_.begin();
+//       for (auto const &active_txn_id : active_set_) {
+//         *txn_id = std::max(*txn_id, active_txn_id);
+//       }
+//       active_set_.clear();
+//       return true;
+//     }
+
+//     active_set_.clear();
+//   }
+//   return false;
+// }
+
+// auto LockManager::DeleteNode(txn_id_t txn_id) -> void {
+//   waits_for_.erase(txn_id);
+
+//   for (auto a_txn_id : txn_set_) {
+//     if (a_txn_id != txn_id) {
+//       RemoveEdge(a_txn_id, txn_id);
+//     }
+//   }
+// }
+
+// auto LockManager::GetEdgeList() -> std::vector<std::pair<txn_id_t, txn_id_t>> {
+//   std::vector<std::pair<txn_id_t, txn_id_t>> result;
+//   for (auto const &pair : waits_for_) {
+//     auto t1 = pair.first;
+//     for (auto const &t2 : pair.second) {
+//       result.emplace_back(t1, t2);
+//     }
+//   }
+//   return result;
+// }
+
+// void LockManager::RunCycleDetection() {
+//   while (enable_cycle_detection_) {
+//     std::this_thread::sleep_for(cycle_detection_interval);
+//     {  // TODO(students): detect deadlock
+//       table_lock_map_latch_.lock();
+//       row_lock_map_latch_.lock();
+//       for (auto &pair : table_lock_map_) {
+//         std::unordered_set<txn_id_t> granted_set;
+//         pair.second->latch_.lock();
+//         for (auto const &lock_request : pair.second->request_queue_) {
+//           if (lock_request->granted_) {
+//             granted_set.emplace(lock_request->txn_id_);
+//           }
+//         }
+//         for (auto const &lock_request : pair.second->request_queue_) {
+//           if (!lock_request->granted_) {
+//             for (auto txn_id : granted_set) {
+//               map_txn_oid_.emplace(lock_request->txn_id_, lock_request->oid_);
+//               AddEdge(lock_request->txn_id_, txn_id);
+//             }
+//           }
+//         }
+//         pair.second->latch_.unlock();
+//       }
+
+//       for (auto &pair : row_lock_map_) {
+//         std::unordered_set<txn_id_t> granted_set;
+//         pair.second->latch_.lock();
+//         for (auto const &lock_request : pair.second->request_queue_) {
+//           if (lock_request->granted_) {
+//             granted_set.emplace(lock_request->txn_id_);
+//           } else {
+//             for (auto txn_id : granted_set) {
+//               map_txn_rid_.emplace(lock_request->txn_id_, lock_request->rid_);
+//               AddEdge(lock_request->txn_id_, txn_id);
+//             }
+//           }
+//         }
+//         pair.second->latch_.unlock();
+//       }
+
+//       row_lock_map_latch_.unlock();
+//       table_lock_map_latch_.unlock();
+
+//       txn_id_t txn_id;
+//       while (HasCycle(&txn_id)) {
+//         Transaction *txn = TransactionManager::GetTransaction(txn_id);
+//         txn->SetState(TransactionState::ABORTED);
+//         DeleteNode(txn_id);
+
+//         if (map_txn_oid_.count(txn_id) > 0) {
+//           table_lock_map_[map_txn_oid_[txn_id]]->latch_.lock();
+//           table_lock_map_[map_txn_oid_[txn_id]]->cv_.notify_all();
+//           table_lock_map_[map_txn_oid_[txn_id]]->latch_.unlock();
+//         }
+
+//         if (map_txn_rid_.count(txn_id) > 0) {
+//           row_lock_map_[map_txn_rid_[txn_id]]->latch_.lock();
+//           row_lock_map_[map_txn_rid_[txn_id]]->cv_.notify_all();
+//           row_lock_map_[map_txn_rid_[txn_id]]->latch_.unlock();
+//         }
+//       }
+
+//       waits_for_.clear();
+//       safe_set_.clear();
+//       txn_set_.clear();
+//       map_txn_oid_.clear();
+//       map_txn_rid_.clear();
+//     }
+//   }
+// }
+// auto LockManager::Dfs(txn_id_t txn_id) -> bool {
+//   if (safe_set_.find(txn_id) != safe_set_.end()) {
+//     return false;
+//   }
+//   active_set_.insert(txn_id);
+
+//   std::vector<txn_id_t> &next_node_vector = waits_for_[txn_id];
+//   std::sort(next_node_vector.begin(), next_node_vector.end());
+//   for (txn_id_t const next_node : next_node_vector) {
+//     if (active_set_.find(next_node) != active_set_.end()) {
+//       return true;
+//     }
+//     if (Dfs(next_node)) {
+//       return true;
+//     }
+//   }
+
+//   active_set_.erase(txn_id);
+//   safe_set_.insert(txn_id);
+//   return false;
+// }
 
 auto LockManager::IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool {
   switch (cur_mode) {

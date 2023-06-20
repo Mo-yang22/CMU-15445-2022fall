@@ -327,12 +327,12 @@ class LockManager {
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
 
-  // std::vector<txn_id_t> path_{};
-  // int index_{0};
+  std::vector<txn_id_t> path_{};
+  int index_{0};
 
-  std::set<txn_id_t> safe_set_;
+  // std::set<txn_id_t> safe_set_;
   std::set<txn_id_t> txn_set_;
-  std::unordered_set<txn_id_t> active_set_;
+  // std::unordered_set<txn_id_t> active_set_;
   std::unordered_map<txn_id_t, RID> map_txn_rid_;
   std::unordered_map<txn_id_t, table_oid_t> map_txn_oid_;
 };
