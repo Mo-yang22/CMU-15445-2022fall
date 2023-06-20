@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <condition_variable>  // NOLINT
-#include <cstddef>
 #include <list>
 #include <memory>
 #include <mutex>  // NOLINT
@@ -73,8 +72,6 @@ class LockManager {
     txn_id_t upgrading_ = INVALID_TXN_ID;
     /** coordination */
     std::mutex latch_;
-
-    // std::mutex protect_;
   };
 
   /**
@@ -234,7 +231,7 @@ class LockManager {
    * @param oid the table_oid_t of the table to be unlocked
    * @return true if the unlock is successful, false otherwise
    */
-  auto UnlockTable(Transaction *txn, const table_oid_t &oid, bool is_upgrade = false) -> bool;
+  auto UnlockTable(Transaction *txn, const table_oid_t &oid) -> bool;
 
   /**
    * Acquire a lock on rid in the given lock_mode.
@@ -266,7 +263,7 @@ class LockManager {
    * @param rid the RID of the row to be unlocked
    * @return true if the unlock is successful, false otherwise
    */
-  auto UnlockRow(Transaction *txn, const table_oid_t &oid, const RID &rid, bool is_upgrade = false) -> bool;
+  auto UnlockRow(Transaction *txn, const table_oid_t &oid, const RID &rid) -> bool;
 
   /*** Graph API ***/
 
@@ -301,16 +298,60 @@ class LockManager {
    */
   auto RunCycleDetection() -> void;
 
+  auto GrantLock(const std::shared_ptr<LockRequest> &lock_request,
+                 const std::shared_ptr<LockRequestQueue> &lock_request_queue) -> bool;
+
+  auto InsertOrDeleteTableLockSet(Transaction *txn, const std::shared_ptr<LockRequest> &lock_request, bool insert)
+      -> void;
+
+  auto InsertOrDeleteRowLockSet(Transaction *txn, const std::shared_ptr<LockRequest> &lock_request, bool insert)
+      -> void;
+
+  auto InsertRowLockSet(const std::shared_ptr<std::unordered_map<table_oid_t, std::unordered_set<RID>>> &lock_set,
+                        const table_oid_t &oid, const RID &rid) -> void {
+    auto row_lock_set = lock_set->find(oid);
+    if (row_lock_set == lock_set->end()) {
+      lock_set->emplace(oid, std::unordered_set<RID>{});
+      row_lock_set = lock_set->find(oid);
+    }
+    row_lock_set->second.emplace(rid);
+  }
+
+  auto DeleteRowLockSet(const std::shared_ptr<std::unordered_map<table_oid_t, std::unordered_set<RID>>> &lock_set,
+                        const table_oid_t &oid, const RID &rid) -> void {
+    auto row_lock_set = lock_set->find(oid);
+    if (row_lock_set == lock_set->end()) {
+      return;
+    }
+    row_lock_set->second.erase(rid);
+  }
+
+  auto Dfs(txn_id_t txn_id) -> bool {
+    if (safe_set_.find(txn_id) != safe_set_.end()) {
+      return false;
+    }
+    active_set_.insert(txn_id);
+
+    std::vector<txn_id_t> &next_node_vector = waits_for_[txn_id];
+    std::sort(next_node_vector.begin(), next_node_vector.end());
+    for (txn_id_t const next_node : next_node_vector) {
+      if (active_set_.find(next_node) != active_set_.end()) {
+        return true;
+      }
+      if (Dfs(next_node)) {
+        return true;
+      }
+    }
+
+    active_set_.erase(txn_id);
+    safe_set_.insert(txn_id);
+    return false;
+  }
+
+  auto DeleteNode(txn_id_t txn_id) -> void;
+
  private:
   /** Fall 2022 */
-  auto IsUpgradeLegal(LockMode cur_mode, LockMode up_mode) -> bool;
-  auto GrantLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
-                 const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
-  auto GrantRowLock(const std::shared_ptr<LockRequestQueue> &lock_request_queue,
-                    const std::shared_ptr<LockRequest> &cur_request, Transaction *txn) -> bool;
-  auto IsCompatible(LockMode cur_mode, LockMode mode) -> bool;
-  auto Dfs(txn_id_t txn_id) -> bool;
-  auto DeleteNode(txn_id_t txn_id) -> void;
   /** Structure that holds lock requests for a given table oid */
   std::unordered_map<table_oid_t, std::shared_ptr<LockRequestQueue>> table_lock_map_;
   /** Coordination */
@@ -327,12 +368,10 @@ class LockManager {
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
 
-  std::vector<txn_id_t> path_{};
-  int index_{0};
-
-  // std::set<txn_id_t> safe_set_;
+  std::set<txn_id_t> safe_set_;
   std::set<txn_id_t> txn_set_;
-  // std::unordered_set<txn_id_t> active_set_;
+  std::unordered_set<txn_id_t> active_set_;
+
   std::unordered_map<txn_id_t, RID> map_txn_rid_;
   std::unordered_map<txn_id_t, table_oid_t> map_txn_oid_;
 };
